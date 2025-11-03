@@ -70,7 +70,6 @@ export default function LoginForm({ users }: LoginFormProps) {
 
                     <div className="text-xs text-muted-foreground mt-4 bg-secondary p-2 rounded">
                         <strong>Contas de exemplo:</strong><br />
-                        👑 Owner: <code>theo.binari@gmail.com</code><br />
                         🏪 Dono: <code>dono@autocenterpremium.com</code><br />
                         👤 Vendedor: <code>vendedor@autocenterpremium.com</code><br />
                         <span>(senhas livres exceto owner)</span>
