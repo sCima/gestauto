@@ -1,154 +1,159 @@
 "use client"
 
-import { useState } from "react"
-import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card"
+import { useState, useEffect } from "react"
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
+import { Input } from "@/components/ui/input"
 import { Button } from "@/components/ui/button"
-import { Label } from "@/components/ui/label"
-import { Vehicle } from "@/data/vehicles"
-import { useToast } from "@/components/ui/use-toast"
+import { Loader2, Car } from "lucide-react"
 
-interface VehicleFormProps {
-    onAddVehicle: (vehicle: Vehicle) => void
-    currentUser: { email: string }
+export interface VehicleFormData {
+    brand: string
+    model: string
+    year: string
+    purchasePrice: string
+    fipePrice: string
+    status: "preparacao" | "pronto" | "vendido" | "finalizado"
 }
 
-/** ✅ Formata número para BRL */
-function formatCurrency(value: number): string {
-    return value.toLocaleString("pt-BR", {
-        style: "currency",
-        currency: "BRL",
-        minimumFractionDigits: 2,
-    })
-}
+export default function VehicleForm({ onSubmit }: { onSubmit: (data: VehicleFormData) => void }) {
+    const [brands, setBrands] = useState<any[]>([])
+    const [models, setModels] = useState<any[]>([])
+    const [years, setYears] = useState<any[]>([])
+    const [loading, setLoading] = useState(false)
 
-/** ✅ Máscara dinâmica de moeda (exibe e formata conforme o usuário digita) */
-function maskCurrency(input: string): string {
-    const digits = input.replace(/\D/g, "").slice(0, 9) // Máx. 9 dígitos → R$ 9.999.999,99
-    const number = parseFloat((parseInt(digits || "0") / 100).toFixed(2))
-    return formatCurrency(number)
-}
-
-/** ✅ Converte string "R$ 75.000,00" → 75000 */
-function parseCurrency(value: string): number {
-    return Number(value.replace(/[R$\s.]/g, "").replace(",", ".")) || 0
-}
-
-export default function VehicleForm({ onAddVehicle, currentUser }: VehicleFormProps) {
-    const { toast } = useToast()
-    const [form, setForm] = useState({
+    const [form, setForm] = useState<VehicleFormData>({
         brand: "",
         model: "",
         year: "",
-        purchasePrice: "R$ 0,00",
-        expectedSalePrice: "R$ 0,00",
+        purchasePrice: "",
+        fipePrice: "",
+        status: "preparacao",
     })
 
-    /** Atualiza e formata os campos de moeda */
-    const handleCurrencyChange = (key: "purchasePrice" | "expectedSalePrice", value: string) => {
-        setForm((prev) => ({ ...prev, [key]: maskCurrency(value) }))
+    useEffect(() => {
+        fetch("https://parallelum.com.br/fipe/api/v1/carros/marcas")
+            .then(res => res.json())
+            .then(data => setBrands(data))
+    }, [])
+
+    const handleBrand = (codigo: string, nome: string) => {
+        setForm(prev => ({ ...prev, brand: nome, model: "", year: "" }))
+        fetch(`https://parallelum.com.br/fipe/api/v1/carros/marcas/${codigo}/modelos`)
+            .then(res => res.json())
+            .then(data => setModels(data.modelos))
     }
 
-    /** Valida e adiciona veículo */
-    const handleSubmit = () => {
-        const purchasePrice = parseCurrency(form.purchasePrice)
-        const expectedSalePrice = parseCurrency(form.expectedSalePrice)
+    const handleModel = (codigo: string, nome: string) => {
+        setForm(prev => ({ ...prev, model: nome, year: "" }))
+        const brandCode = brands.find(b => b.nome === form.brand)?.codigo
+        fetch(`https://parallelum.com.br/fipe/api/v1/carros/marcas/${brandCode}/modelos/${codigo}/anos`)
+            .then(res => res.json())
+            .then(data => setYears(data.filter((y: any) => y.codigo !== "32000")))
+    }
 
-        if (!form.brand.trim() || !form.model.trim() || !form.year.trim()) {
-            toast.error("Preencha todos os campos obrigatórios.")
-            return
-        }
+    const handleYearAndFipe = (codigoAno: string) => {
+        const brandCode = brands.find(b => b.nome === form.brand)?.codigo
+        const modelCode = models.find(m => m.nome === form.model)?.codigo
 
-        if (purchasePrice <= 0 || expectedSalePrice <= 0) {
-            toast.error("Os valores devem ser maiores que zero.")
-            return
-        }
+        setForm(prev => ({ ...prev, year: codigoAno }))
+        if (!brandCode || !modelCode) return
 
-        const newVehicle: Vehicle = {
-            id: String(Date.now()),
-            brand: form.brand,
-            model: form.model,
-            year: Number(form.year),
-            purchasePrice,
-            expectedSalePrice,
-            status: "preparacao",
-            responsavelEmail: currentUser.email,
-        }
+        setLoading(true)
+        fetch(`https://parallelum.com.br/fipe/api/v1/carros/marcas/${brandCode}/modelos/${modelCode}/anos/${codigoAno}`)
+            .then(res => res.json())
+            .then(data => {
+                setForm(prev => ({ ...prev, fipePrice: data.Valor || "" }))
+            })
+            .finally(() => setLoading(false))
+    }
 
-        onAddVehicle(newVehicle)
-        toast.success(`Veículo ${form.brand} ${form.model} adicionado com sucesso!`)
-
-        setForm({
-            brand: "",
-            model: "",
-            year: "",
-            purchasePrice: "R$ 0,00",
-            expectedSalePrice: "R$ 0,00",
-        })
+    const formatCurrency = (value: string) => {
+        const number = value.replace(/\D/g, "")
+        return (Number(number) / 100).toLocaleString("pt-BR", { style: "currency", currency: "BRL" })
     }
 
     return (
-        <Card className="mb-8">
+        <Card className="p-4">
             <CardHeader>
-                <CardTitle>Adicionar Veículo</CardTitle>
+                <CardTitle className="text-lg font-bold flex gap-2 items-center">
+                    <Car className="w-5 h-5" /> Cadastrar Veículo (FIPE)
+                </CardTitle>
             </CardHeader>
 
-            <CardContent className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-6 gap-4">
-                <div>
-                    <Label>Marca</Label>
-                    <input
-                        value={form.brand}
-                        onChange={(e) => setForm({ ...form, brand: e.target.value })}
-                        placeholder="Ex: Toyota"
-                        className="w-full p-2 border rounded-md"
-                    />
+            <CardContent className="space-y-4">
+                {/* Marca e Modelo Lado a Lado */}
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div>
+                        <label className="text-sm font-medium">Marca</label>
+                        <Select onValueChange={(v) => {
+                            const [codigo, nome] = v.split("|")
+                            handleBrand(codigo, nome)
+                        }}>
+                            <SelectTrigger><SelectValue placeholder="Selecione" /></SelectTrigger>
+                            <SelectContent>
+                                {brands.map(b => (
+                                    <SelectItem key={b.codigo} value={`${b.codigo}|${b.nome}`}>{b.nome}</SelectItem>
+                                ))}
+                            </SelectContent>
+                        </Select>
+                    </div>
+
+                    <div>
+                        <label className="text-sm font-medium">Modelo</label>
+                        <Select onValueChange={(v) => {
+                            const [codigo, nome] = v.split("|")
+                            handleModel(codigo, nome)
+                        }}>
+                            <SelectTrigger><SelectValue placeholder="Selecione" /></SelectTrigger>
+                            <SelectContent>
+                                {models.map(m => (
+                                    <SelectItem key={m.codigo} value={`${m.codigo}|${m.nome}`}>{m.nome}</SelectItem>
+                                ))}
+                            </SelectContent>
+                        </Select>
+                    </div>
                 </div>
 
-                <div>
-                    <Label>Modelo</Label>
-                    <input
-                        value={form.model}
-                        onChange={(e) => setForm({ ...form, model: e.target.value })}
-                        placeholder="Ex: Corolla"
-                        className="w-full p-2 border rounded-md"
-                    />
+                {/* Ano e Valor Lado a Lado */}
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    {years.length > 0 && (
+                        <div>
+                            <label className="text-sm font-medium">Ano</label>
+                            <Select onValueChange={(v) => handleYearAndFipe(v)}>
+                                <SelectTrigger><SelectValue placeholder="Ano" /></SelectTrigger>
+                                <SelectContent>
+                                    {years.map(y => (
+                                        <SelectItem key={y.codigo} value={y.codigo}>{y.nome}</SelectItem>
+                                    ))}
+                                </SelectContent>
+                            </Select>
+                        </div>
+                    )}
+
+                    <div>
+                        <label className="text-sm font-medium">Valor de Compra</label>
+                        <Input
+                            placeholder="R$ 0,00"
+                            value={form.purchasePrice}
+                            onChange={(e) =>
+                                setForm(prev => ({ ...prev, purchasePrice: formatCurrency(e.target.value) }))
+                            }
+                        />
+                    </div>
                 </div>
 
-                <div>
-                    <Label>Ano</Label>
-                    <input
-                        type="number"
-                        value={form.year}
-                        onChange={(e) => setForm({ ...form, year: e.target.value })}
-                        placeholder="2024"
-                        min="1900"
-                        max={new Date().getFullYear() + 1}
-                        className="w-full p-2 border rounded-md"
-                    />
-                </div>
-
-                <div>
-                    <Label>Preço de Compra</Label>
-                    <input
-                        value={form.purchasePrice}
-                        onChange={(e) => handleCurrencyChange("purchasePrice", e.target.value)}
-                        className="w-full p-2 border rounded-md text-right"
-                    />
-                </div>
-
-                <div>
-                    <Label>Preço Esperado</Label>
-                    <input
-                        value={form.expectedSalePrice}
-                        onChange={(e) => handleCurrencyChange("expectedSalePrice", e.target.value)}
-                        className="w-full p-2 border rounded-md text-right"
-                    />
-                </div>
-
-                <div className="flex items-end">
-                    <Button className="w-full" onClick={handleSubmit}>
-                        Adicionar
+                {/* Botão de cadastrar */}
+                <div className="flex justify-start mt-4">
+                    <Button
+                        className="px-6 py-2 bg-blue-600 hover:bg-blue-700 text-white text-sm rounded-md"
+                        disabled={loading}
+                        onClick={() => onSubmit(form)}
+                    >
+                        {loading ? <Loader2 className="animate-spin h-4 w-4" /> : "Cadastrar"}
                     </Button>
                 </div>
+
             </CardContent>
         </Card>
     )

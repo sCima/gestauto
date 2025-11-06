@@ -7,6 +7,15 @@ import VehicleCard from "@/components/vehicles/VehicleCard"
 import VehicleForm from "@/components/vehicles/VehicleForm"
 import VehicleEditDialog from "@/components/vehicles/VehicleEditDialog"
 import { Vehicle, initialVehicles } from "@/data/vehicles"
+import { v4 as uuidv4 } from "uuid"
+
+interface VehicleFormData {
+    brand: string;
+    model: string;
+    year: string;
+    purchasePrice: string;
+    status: string;
+}
 
 export default function EstoquePage() {
     const [vehicles, setVehicles] = useState<Vehicle[]>([])
@@ -14,63 +23,62 @@ export default function EstoquePage() {
     const [isEditDialogOpen, setIsEditDialogOpen] = useState(false)
     const [currentUser, setCurrentUser] = useState<any>(null)
 
-    // ✅ Carregar dados do usuário e dos veículos com fallback inteligente
     useEffect(() => {
         const user = localStorage.getItem("gestauto_user")
-        if (user) {
-            setCurrentUser(JSON.parse(user))
-        }
+        if (user) setCurrentUser(JSON.parse(user))
 
         const savedVehicles = localStorage.getItem("gestauto_vehicles")
-
         if (savedVehicles) {
             try {
                 const parsed = JSON.parse(savedVehicles)
-                // Se o localStorage estiver vazio ou inválido, carrega os mocados iniciais
-                if (Array.isArray(parsed) && parsed.length > 0) {
-                    setVehicles(parsed)
-                } else {
-                    setVehicles(initialVehicles)
-                }
+                setVehicles(Array.isArray(parsed) && parsed.length > 0 ? parsed : initialVehicles)
             } catch {
-                // Em caso de erro ao ler localStorage, usar fallback
                 setVehicles(initialVehicles)
             }
         } else {
-            // Primeira vez: carregar mocados
             setVehicles(initialVehicles)
         }
     }, [])
 
-    // 💾 Persistência automática, mas apenas se houver veículos
     useEffect(() => {
         if (vehicles.length > 0) {
             localStorage.setItem("gestauto_vehicles", JSON.stringify(vehicles))
         }
     }, [vehicles])
 
-    // ➕ Adicionar veículo
-    const handleAddVehicle = (vehicle: Vehicle) => {
-        setVehicles(prev => [...prev, vehicle])
-    }
+    const handleAddVehicle = (data: VehicleFormData) => {
+        const purchasePriceClean = typeof data.purchasePrice === "string"
+            ? Number(data.purchasePrice.replace(/\D/g, "")) / 100
+            : Number(data.purchasePrice) || 0;
 
-    // 🗑 Excluir veículo
+        const newVehicle: Vehicle = {
+            id: uuidv4(),
+            brand: data.brand,
+            model: data.model,
+            year: Number(data.year),
+            purchasePrice: purchasePriceClean,
+            expectedSalePrice: 0,
+            status: data.status as Vehicle["status"],
+            responsavelEmail: currentUser?.email || "",
+        };
+
+        setVehicles(prev => [...prev, newVehicle]);
+    };
+
+
     const handleDeleteVehicle = (id: string) => {
         setVehicles(prev => prev.filter(v => v.id !== id))
     }
 
-    // ✏️ Editar veículo (abrir modal)
     const handleEditVehicle = (vehicle: Vehicle) => {
         setEditingVehicle(vehicle)
         setIsEditDialogOpen(true)
     }
 
-    // 💾 Salvar edição
     const handleSaveVehicle = (updatedVehicle: Vehicle) => {
         setVehicles(prev => prev.map(v => (v.id === updatedVehicle.id ? updatedVehicle : v)))
     }
 
-    // 🔄 Alterar status do veículo
     const handleStatusChange = (id: string, newStatus: Vehicle["status"], salePrice?: number) => {
         setVehicles(prev =>
             prev.map(v =>
@@ -81,13 +89,11 @@ export default function EstoquePage() {
         )
     }
 
-    // 🚪 Logout
     const handleLogout = () => {
         localStorage.removeItem("gestauto_user")
         window.location.href = "/"
     }
 
-    // Bloqueia renderização enquanto usuário não é carregado
     if (!currentUser) return null
 
     return (
@@ -97,11 +103,10 @@ export default function EstoquePage() {
             <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
                 <h2 className="text-2xl font-bold mb-6">Gestão de Estoque</h2>
 
-                {/* Formulário para adicionar veículos */}
-                <VehicleForm onAddVehicle={handleAddVehicle} currentUser={currentUser} />
+                {/* ✅ Aqui corrigido */}
+                <VehicleForm onSubmit={handleAddVehicle} />
 
-                {/* Lista de veículos */}
-                <div className="grid grid-cols-1 lg:grid-cols-2 xl:grid-cols-3 gap-6">
+                <div className="grid grid-cols-1 lg:grid-cols-2 xl:grid-cols-3 gap-6 mt-6">
                     {vehicles.length > 0 ? (
                         vehicles.map(vehicle => (
                             <VehicleCard
@@ -133,3 +138,5 @@ export default function EstoquePage() {
         </ProtectedRoute>
     )
 }
+
+
