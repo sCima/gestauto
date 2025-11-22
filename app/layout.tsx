@@ -1,6 +1,6 @@
 import "./globals.css"
 import type { Metadata } from "next"
-import { Toaster } from "sonner"
+import { Toaster } from "sonner" // <-- aqui é sonner AGORA
 
 export const metadata: Metadata = {
   title: "GestAuto",

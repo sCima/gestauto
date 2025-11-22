@@ -38,7 +38,16 @@ const COLORS = {
     grid: "#E5E7EB",
 }
 
-// Tick de 2 linhas (Modelo na 1ª, Ano na 2ª)
+const STALE_DAYS_THRESHOLD = 60 // dias parado pra ser considerado "alerta"
+
+function diffInDays(from: string) {
+    const d = new Date(from)
+    if (Number.isNaN(d.getTime())) return null
+    const now = new Date()
+    const diffMs = now.getTime() - d.getTime()
+    return Math.floor(diffMs / (1000 * 60 * 60 * 24))
+}
+
 function TwoLineTick(props: any) {
     const { x, y, payload } = props
     const [line1, line2] = String(payload.value).split("\n")
@@ -120,43 +129,54 @@ export default function DashboardPage() {
         { name: "Finalizado", key: "finalizado", value: scopedVehicles.filter(v => v.status === "finalizado").length, color: COLORS.gray },
     ].filter(d => d.value > 0)
 
-    // Top 5 por lucro (mostra "Modelo\nAno" no eixo X)
-    const profitPerVehicle = scopedVehicles.map(v => {
-        const profit = v.status === "vendido"
-            ? (Number(v.salePrice || 0) - Number(v.purchasePrice))
-            : (Number(v.expectedSalePrice) - Number(v.purchasePrice))
+    // só veículos vendidos (ajusta se tiver "finalizado" também)
+    const soldVehicles = scopedVehicles.filter(
+        v => v.status === "vendido"
+        // || v.status === "finalizado"
+    )
+
+    // Top 5 por lucro (apenas vendidos)
+    const profitPerVehicle = soldVehicles.map(v => {
+        const profit = Number(v.salePrice ?? 0) - Number(v.purchasePrice ?? 0)
+
         return {
             id: v.id,
             name2Lines: `${v.brand} ${v.model}\n${v.year}`,
-            profit: Number(profit),
+            profit,
         }
     })
-    const top5 = [...profitPerVehicle].sort((a, b) => b.profit - a.profit).slice(0, 5)
 
-    // Agregado: Estoque vs Vendido (Compra/Esperado/Realizado)
-    const aggregated = [
-        {
-            name: "Estoque",
-            compra: inStock.reduce((s, v) => s + Number(v.purchasePrice), 0),
-            esperado: inStock.reduce((s, v) => s + Number(v.expectedSalePrice), 0),
-            // realizado não se aplica
-        },
-        {
-            name: "Vendido",
-            compra: sold.reduce((s, v) => s + Number(v.purchasePrice), 0),
-            realizado: sold.reduce((s, v) => s + Number(v.salePrice || 0), 0),
-            // esperado não se aplica
-        },
-    ]
+    const top5 = profitPerVehicle
+        .filter(p => p.profit > 0)            // opcional
+        .sort((a, b) => b.profit - a.profit)
+        .slice(0, 5)
+
+
+
 
     // Meta do vendedor
     const SELL_TARGET = 5
     const mySoldCount = sold.length
     const targetPct = Math.min(100, Math.round((mySoldCount / SELL_TARGET) * 100))
 
+    // Veículos parados há muito tempo (sem vender)
+    const staleVehicles = inStock
+        .filter(v => v.entryDate) // só quem tem data
+        .map(v => {
+            const days = diffInDays(v.entryDate as string)
+            return { ...v, daysStopped: days }
+        })
+        .filter(v => v.daysStopped !== null && (v.daysStopped as number) >= STALE_DAYS_THRESHOLD)
+
+    const staleInventoryValue = staleVehicles.reduce(
+        (s, v) => s + Number(v.purchasePrice),
+        0
+    )
+
+
     // ===== RENDERIZADORES DE GRÁFICOS =====
     const renderDonut = (
-        <ResponsiveContainer width="100%" height={280}>
+        <ResponsiveContainer width="100%" height="100%">
             <PieChart>
                 <Pie
                     data={statusDistribution}
@@ -177,15 +197,31 @@ export default function DashboardPage() {
     )
 
     const renderTop5Bar = (
-        <ResponsiveContainer width="100%" height={320}>
-            <BarChart data={top5} margin={{ top: 20, right: 8, bottom: 0, left: 50 }}>
+        <ResponsiveContainer width="100%" height="100%">
+            <BarChart
+                data={top5}
+                margin={{ top: 20, right: 8, bottom: 0, left: 40 }}
+            >
                 <CartesianGrid stroke={COLORS.grid} vertical={false} />
-                <XAxis dataKey="name2Lines" interval={0} tick={<TwoLineTick />} />
+
+                <XAxis
+                    dataKey="name2Lines"
+                    interval={0}
+                    // só mostra a primeira parte (marca) no rótulo do eixo
+                    tickFormatter={(value: string) => value.split(" ")[0]}
+                // se quiser pode tirar o TwoLineTick, não precisa mais dele:
+                // tick={<TwoLineTick />}
+                />
+
                 <YAxis tickFormatter={(v) => formatCurrency(Number(v))} />
+
                 <Tooltip
+                    // aqui continua usando o valor numérico normal
                     formatter={(v: any) => formatCurrency(Number(v))}
+                    // aqui o label ainda vem COMPLETO, com o \n se tiver
                     labelFormatter={(label: string) => label.replace("\n", " — ")}
                 />
+
                 <Bar dataKey="profit" fill={COLORS.green} radius={[6, 6, 0, 0]}>
                     <LabelList
                         dataKey="profit"
@@ -198,23 +234,8 @@ export default function DashboardPage() {
         </ResponsiveContainer>
     )
 
-    const renderAggregatedArea = (
-        <ResponsiveContainer width="100%" height={320}>
-            <AreaChart data={aggregated} margin={{ top: 8, right: 16, bottom: 0, left: 50 }}>
-                <CartesianGrid stroke={COLORS.grid} vertical={false} />
-                <XAxis dataKey="name" />
-                <YAxis tickFormatter={(v) => formatCurrency(Number(v))} />
-                <Tooltip formatter={(v: any) => formatCurrency(Number(v))} />
-                <Legend />
-                {/* Compra nas duas */}
-                <Area type="monotone" dataKey="compra" name="Valor de Compra" stroke={COLORS.gray} fill="#F3F4F6" />
-                {/* Esperado só em Estoque */}
-                <Area type="monotone" dataKey="esperado" name="Valor Esperado" stroke={COLORS.blue} fill="#E3F2FD" />
-                {/* Realizado só em Vendido */}
-                <Area type="monotone" dataKey="realizado" name="Valor Realizado" stroke={COLORS.green} fill="#E8F5E9" />
-            </AreaChart>
-        </ResponsiveContainer>
-    )
+
+
 
     // ===== UI BLOCS =====
     const CardsKPIs = () => (
@@ -280,36 +301,50 @@ export default function DashboardPage() {
                     <CardContent>{top5.length ? renderTop5Bar : <p className="text-sm text-muted-foreground">Sem dados</p>}</CardContent>
                 </Card>
             </div>
+
+            {/* Alerta no lugar do gráfico agregado */}
             <div className="grid grid-cols-1 mt-6">
-                <Card>
-                    <CardHeader><CardTitle>Compra x Esperado x Realizado</CardTitle></CardHeader>
-                    <CardContent>{renderAggregatedArea}</CardContent>
-                </Card>
+                <StaleVehiclesCard />
             </div>
         </>
     )
+
 
     const DonoDashboard = () => (
         <>
             <CardsKPIs />
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mt-6">
-                <Card>
-                    <CardHeader><CardTitle>Distribuição do Estoque</CardTitle></CardHeader>
-                    <CardContent>{statusDistribution.length ? renderDonut : <p className="text-sm text-muted-foreground">Sem dados</p>}</CardContent>
+                <Card className="h-[360px]">
+                    <CardHeader className="pb-2">
+                        <CardTitle>Distribuição do Estoque</CardTitle>
+                    </CardHeader>
+                    <CardContent className="h-[300px]">
+                        {statusDistribution.length
+                            ? renderDonut
+                            : <p className="text-sm text-muted-foreground">Sem dados</p>}
+                    </CardContent>
                 </Card>
-                <Card>
-                    <CardHeader><CardTitle>Modelos com Melhor Margem</CardTitle></CardHeader>
-                    <CardContent>{top5.length ? renderTop5Bar : <p className="text-sm text-muted-foreground">Sem dados</p>}</CardContent>
+
+                <Card className="h-[360px]">
+                    <CardHeader className="pb-2">
+                        <CardTitle>Modelos com Melhor Margem</CardTitle>
+                    </CardHeader>
+                    <CardContent className="h-[300px]">
+                        {top5.length
+                            ? renderTop5Bar
+                            : <p className="text-sm text-muted-foreground">Sem dados</p>}
+                    </CardContent>
                 </Card>
             </div>
+
+
+
             <div className="grid grid-cols-1 mt-6">
-                <Card>
-                    <CardHeader><CardTitle>Valores Agregados</CardTitle></CardHeader>
-                    <CardContent>{renderAggregatedArea}</CardContent>
-                </Card>
+                <StaleVehiclesCard />
             </div>
         </>
     )
+
 
     const VendedorDashboard = () => (
         <>
@@ -343,6 +378,68 @@ export default function DashboardPage() {
             </div>
         </>
     )
+
+    const StaleVehiclesCard = () => (
+        <Card>
+            <CardHeader>
+                <CardTitle>
+                    Veículos parados há mais de {STALE_DAYS_THRESHOLD} dias
+                </CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-4">
+                {staleVehicles.length === 0 ? (
+                    <p className="text-sm text-emerald-700 bg-emerald-50 border border-emerald-100 rounded-md px-3 py-2">
+                        Nenhum veículo parado além de {STALE_DAYS_THRESHOLD} dias. Bom sinal! 🚀
+                    </p>
+                ) : (
+                    <>
+                        <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-2 text-sm">
+                            <span className="font-medium">
+                                {staleVehicles.length} veículo(s) em alerta
+                            </span>
+                            <span className="text-xs md:text-sm text-muted-foreground">
+                                Capital travado em estoque:{" "}
+                                <span className="font-semibold">
+                                    {formatCurrency(staleInventoryValue)}
+                                </span>
+                            </span>
+                        </div>
+
+                        <div className="space-y-2">
+                            {staleVehicles.slice(0, 5).map((v) => (
+                                <div
+                                    key={v.id}
+                                    className="flex flex-col md:flex-row md:items-center md:justify-between gap-1 rounded-md border border-amber-200 bg-amber-50 px-3 py-2"
+                                >
+                                    <div className="text-sm">
+                                        <p className="font-medium">
+                                            {v.brand} {v.model} {v.year}
+                                        </p>
+                                        <p className="text-xs text-muted-foreground">
+                                            Entrada:{" "}
+                                            {v.entryDate
+                                                ? new Date(v.entryDate).toLocaleDateString("pt-BR")
+                                                : "—"}{" "}
+                                            • Compra: {formatCurrency(v.purchasePrice)}
+                                        </p>
+                                    </div>
+                                    <div className="text-xs md:text-sm font-semibold text-amber-800">
+                                        {(v.daysStopped as number)} dias parado
+                                    </div>
+                                </div>
+                            ))}
+                            {staleVehicles.length > 5 && (
+                                <p className="text-xs text-muted-foreground">
+                                    +{staleVehicles.length - 5} veículo(s) também em alerta.
+                                </p>
+                            )}
+                        </div>
+                    </>
+                )}
+            </CardContent>
+        </Card>
+    )
+
 
     // ===== RENDER =====
     return (

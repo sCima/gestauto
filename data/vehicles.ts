@@ -4,14 +4,14 @@ export interface Vehicle {
     model: string
     year: number
     purchasePrice: number
-    expectedSalePrice: number
+    expectedSalePrice?: number
+    expectedProfit?: number
     status: "preparacao" | "pronto" | "vendido" | "finalizado"
-    salePrice?: number
     fipePrice?: number
-    responsavelEmail: string 
+    salePrice?: number
+    responsavelEmail?: string
+    entryDate?: string // "YYYY-MM-DD"
 }
-
-
 
 export const initialVehicles: Vehicle[] = [
     {
@@ -22,6 +22,7 @@ export const initialVehicles: Vehicle[] = [
         purchasePrice: 65000,
         expectedSalePrice: 75000,
         status: 'pronto',
+        entryDate: "2025-08-10",
         responsavelEmail: "vendedor1@gmail.com"
     },
     {
@@ -32,6 +33,7 @@ export const initialVehicles: Vehicle[] = [
         purchasePrice: 58000,
         expectedSalePrice: 68000,
         status: 'preparacao',
+        entryDate: "2025-08-10",
         responsavelEmail: "vendedor1@gmail.com"
     },
     {
@@ -43,6 +45,7 @@ export const initialVehicles: Vehicle[] = [
         expectedSalePrice: 82000,
         status: 'vendido',
         salePrice: 80000,
+        entryDate: "2025-08-10",
         responsavelEmail: "vendedor1@gmail.com"
     }
 ]

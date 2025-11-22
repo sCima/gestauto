@@ -54,9 +54,42 @@ export default function VehicleCard({ vehicle, onDelete, onEdit, onStatusChange 
                 </CardHeader>
 
                 <CardContent className="space-y-2 text-sm">
-                    <p><strong>Ano:</strong> {vehicle.year ?? "Não informado"}</p>
+                    <p><strong>Ano:</strong> {vehicle.year}</p>
+                    <p>
+                        <strong>Entrada:</strong>{" "}
+                        {vehicle.entryDate
+                            ? new Date(vehicle.entryDate).toLocaleDateString("pt-BR")
+                            : "—"}
+                    </p>
                     <p><strong>Compra:</strong> {formatCurrency(vehicle.purchasePrice)}</p>
-                    <p><strong>Valor FIPE:</strong> {vehicle.fipePrice ? formatCurrency(vehicle.fipePrice) : "—"}</p>
+
+                    {typeof vehicle.expectedSalePrice === "number" && (
+                        <p>
+                            <strong>Valor esperado:</strong> {formatCurrency(vehicle.expectedSalePrice)}
+                        </p>
+                    )}
+
+                    {typeof vehicle.expectedProfit === "number" && (
+                        <p>
+                            <strong>Lucro esperado:</strong> {formatCurrency(vehicle.expectedProfit)}
+                        </p>
+                    )}
+
+                    {vehicle.status === "vendido" && typeof vehicle.salePrice === "number" && (
+                        <>
+                            <p>
+                                <strong>Valor vendido:</strong> {formatCurrency(vehicle.salePrice)}
+                            </p>
+                            <p>
+                                <strong>Lucro real:</strong>{" "}
+                                {formatCurrency(
+                                    (vehicle.salePrice ?? 0) - (vehicle.purchasePrice ?? 0)
+                                )}
+                            </p>
+                        </>
+                    )}
+
+
 
                     {/* Ações */}
                     <div className="flex gap-2 mt-4">

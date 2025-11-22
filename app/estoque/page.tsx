@@ -1,6 +1,7 @@
 "use client"
 
 import { useState, useEffect } from "react"
+import { toast } from "sonner"
 import ProtectedRoute from "@/components/layout/ProtectedRoute"
 import Header from "@/components/layout/Header"
 import VehicleCard from "@/components/vehicles/VehicleCard"
@@ -15,6 +16,11 @@ interface VehicleFormData {
     year: string;
     purchasePrice: string;
     status: string;
+    entryDate: string;
+    fipePrice?: string;
+    expectedSalePrice?: string  // VEM do form como moeda formatada
+    expectedProfit?: string
+
 }
 
 export default function EstoquePage() {
@@ -47,23 +53,62 @@ export default function EstoquePage() {
     }, [vehicles])
 
     const handleAddVehicle = (data: VehicleFormData) => {
-        const purchasePriceClean = typeof data.purchasePrice === "string"
-            ? Number(data.purchasePrice.replace(/\D/g, "")) / 100
-            : Number(data.purchasePrice) || 0;
+        const numericYear = parseInt(data.year, 10)
+
+        const purchasePriceClean =
+            typeof data.purchasePrice === "string"
+                ? Number(data.purchasePrice.replace(/\D/g, "")) / 100
+                : Number(data.purchasePrice)
+
+        const fipePriceClean =
+            data.fipePrice
+                ? Number(data.fipePrice.replace(/\D/g, "")) / 100
+                : undefined
+
+        const expectedSalePrice = data.expectedSalePrice
+            ? Number(data.expectedSalePrice.replace(/\D/g, "")) / 100
+            : undefined
+
+        const expectedProfit = data.expectedProfit
+            ? Number(data.expectedProfit.replace(/\D/g, "")) / 100
+            : undefined
+
+
+        if (
+            !data.brand ||
+            !data.model ||
+            !data.year ||
+            Number.isNaN(numericYear) ||
+            !data.purchasePrice ||
+            !purchasePriceClean
+        ) {
+            toast("Não foi possível cadastrar", {
+                description:
+                    "Marca, Modelo, Ano e Valor de Compra são obrigatórios e precisam ser válidos.",
+            })
+            return
+        }
 
         const newVehicle: Vehicle = {
             id: uuidv4(),
             brand: data.brand,
             model: data.model,
-            year: Number(data.year),
+            year: numericYear,
             purchasePrice: purchasePriceClean,
-            expectedSalePrice: 0,
+            fipePrice: fipePriceClean,
+            expectedSalePrice,
+            expectedProfit,
             status: data.status as Vehicle["status"],
             responsavelEmail: currentUser?.email || "",
-        };
+            entryDate: data.entryDate || new Date().toISOString().slice(0, 10),
+        }
 
-        setVehicles(prev => [...prev, newVehicle]);
-    };
+        setVehicles(prev => [...prev, newVehicle])
+
+        toast("Veículo cadastrado", {
+            description: `${data.brand} ${data.model} foi adicionado ao estoque.`,
+        })
+    }
 
 
     const handleDeleteVehicle = (id: string) => {
