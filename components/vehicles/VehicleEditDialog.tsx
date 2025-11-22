@@ -38,7 +38,6 @@ export default function VehicleEditDialog({ vehicle, open, onClose, onSave }: Ve
         expectedSalePrice: "",
     })
 
-    // ✅ Carregar dados do veículo ao abrir modal
     useEffect(() => {
         if (vehicle) {
             setForm({
@@ -46,7 +45,10 @@ export default function VehicleEditDialog({ vehicle, open, onClose, onSave }: Ve
                 model: vehicle.model,
                 year: String(vehicle.year),
                 purchasePrice: formatCurrencyBR(vehicle.purchasePrice),
-                expectedSalePrice: formatCurrencyBR(vehicle.expectedSalePrice),
+                expectedSalePrice: vehicle.expectedSalePrice != null
+                    ? formatCurrencyBR(vehicle.expectedSalePrice)
+                    : "",
+
             })
         }
     }, [vehicle])
