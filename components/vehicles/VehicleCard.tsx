@@ -8,7 +8,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "
 import { Input } from "@/components/ui/input";
 import { Vehicle } from "@/data/vehicles";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { formatCurrency, getStatusLabel } from "@/lib/utils";
+import { formatCurrency, getStatusColor, getStatusLabel } from "@/lib/utils";
 
 interface VehicleCardProps {
     vehicle: Vehicle;
@@ -49,7 +49,12 @@ export default function VehicleCard({ vehicle, onDelete, onEdit, onStatusChange 
                         <CardTitle>
                             {vehicle.brand} {vehicle.model}
                         </CardTitle>
-                        <Badge>{getStatusLabel(vehicle.status)}</Badge>
+                        <span
+                            className={`px-5 py-2 mx-auto rounded-full text-xs font-medium whitespace-nowrap ${getStatusColor(vehicle.status)}`}
+                        >
+                            {getStatusLabel(vehicle.status)}
+                        </span>
+                        
                     </div>
                 </CardHeader>
 
@@ -87,6 +92,16 @@ export default function VehicleCard({ vehicle, onDelete, onEdit, onStatusChange 
                                 )}
                             </p>
                         </>
+                    )}
+
+                    {vehicle.color && (
+                        <p><strong>Cor:</strong> {vehicle.color}</p>
+                    )}
+
+                    {vehicle.notes && (
+                        <p className="text-sm">
+                            <strong>Obs.:</strong> {vehicle.notes}
+                        </p>
                     )}
 
 

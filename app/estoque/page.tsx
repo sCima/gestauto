@@ -9,6 +9,8 @@ import VehicleForm from "@/components/vehicles/VehicleForm"
 import VehicleEditDialog from "@/components/vehicles/VehicleEditDialog"
 import { Vehicle, initialVehicles } from "@/data/vehicles"
 import { v4 as uuidv4 } from "uuid"
+import { loadTransactions, saveTransactions } from "@/lib/utils"
+import { Transaction } from "@/types/transaction"
 
 interface VehicleFormData {
     brand: string;
@@ -18,10 +20,13 @@ interface VehicleFormData {
     status: string;
     entryDate: string;
     fipePrice?: string;
-    expectedSalePrice?: string  // VEM do form como moeda formatada
-    expectedProfit?: string
-
+    expectedSalePrice?: string;
+    expectedProfit?: string;
+    color: string;      
+    notes: string;      
 }
+
+
 
 export default function EstoquePage() {
     const [vehicles, setVehicles] = useState<Vehicle[]>([])
@@ -101,6 +106,8 @@ export default function EstoquePage() {
             status: data.status as Vehicle["status"],
             responsavelEmail: currentUser?.email || "",
             entryDate: data.entryDate || new Date().toISOString().slice(0, 10),
+            color: data.color || "",
+            notes: data.notes || "",
         }
 
         setVehicles(prev => [...prev, newVehicle])
@@ -124,15 +131,49 @@ export default function EstoquePage() {
         setVehicles(prev => prev.map(v => (v.id === updatedVehicle.id ? updatedVehicle : v)))
     }
 
-    const handleStatusChange = (id: string, newStatus: Vehicle["status"], salePrice?: number) => {
+    const handleStatusChange = (
+        id: string,
+        newStatus: Vehicle["status"],
+        salePrice?: number
+    ) => {
+
         setVehicles(prev =>
             prev.map(v =>
                 v.id === id
-                    ? { ...v, status: newStatus, salePrice: newStatus === "vendido" ? salePrice : undefined }
+                    ? { ...v, status: newStatus, salePrice }
                     : v
             )
         )
+
+        // cria transação automática
+        if (newStatus === "vendido") {
+            const vehicle = vehicles.find(v => v.id === id)
+            if (!vehicle) return
+
+            const compra = Number(vehicle.purchasePrice)
+            const venda = Number(salePrice || 0)
+            const lucro = venda - compra
+
+            if (lucro <= 0) {
+                console.warn("Lucro zero ou negativo → não registrar conta")
+                return
+            }
+
+            const novaTransacao: Transaction = {
+                id: String(Date.now()),
+                tipo: "entrada",
+                valor: lucro,
+                descricao: `Lucro venda ${vehicle.brand} ${vehicle.model}`,
+                categoria: "Lucro venda veículo",
+                data: new Date().toISOString().slice(0, 10),
+                recorrente: false,
+            }
+
+            const todas = loadTransactions()
+            saveTransactions([...todas, novaTransacao])
+        }
     }
+
 
     const handleLogout = () => {
         localStorage.removeItem("gestauto_user")

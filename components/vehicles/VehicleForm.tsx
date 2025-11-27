@@ -19,6 +19,8 @@ export interface VehicleFormData {
     entryDate: string
     expectedSalePrice: string
     expectedProfit: string
+    color: string        
+    notes: string        
 }
 
 export default function VehicleForm({ onSubmit }: { onSubmit: (data: VehicleFormData) => void }) {
@@ -38,8 +40,10 @@ export default function VehicleForm({ onSubmit }: { onSubmit: (data: VehicleForm
         expectedProfit: "",
         status: "preparacao",
         entryDate: "",
-        
+        color: "",
+        notes: "",
     })
+
 
 
     useEffect(() => {
@@ -323,6 +327,34 @@ export default function VehicleForm({ onSubmit }: { onSubmit: (data: VehicleForm
                             />
                         </div>
                     </div>
+
+                    {/* Cor e Observações */}
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                        <div>
+                            <label className="text-sm font-medium">Cor</label>
+                            <Input
+                                placeholder="Ex: Preto, Prata, Branco Pérola"
+                                value={form.color}
+                                onChange={e =>
+                                    setForm(prev => ({ ...prev, color: e.target.value }))
+                                }
+                            />
+                        </div>
+
+                        <div>
+                            <label className="text-sm font-medium">Observações</label>
+                            <textarea
+                                rows={3}
+                                className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm shadow-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                                placeholder="Ex: único dono, revisões em dia, pneus novos..."
+                                value={form.notes}
+                                onChange={e =>
+                                    setForm(prev => ({ ...prev, notes: e.target.value }))
+                                }
+                            />
+                        </div>
+                    </div>
+
 
                     {/* Botão */}
                     <div className="flex justify-start mt-4">

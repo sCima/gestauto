@@ -11,6 +11,9 @@ export interface Vehicle {
     salePrice?: number
     responsavelEmail?: string
     entryDate?: string // "YYYY-MM-DD"
+    color?: string     
+    notes?: string     
+
 }
 
 export const initialVehicles: Vehicle[] = [

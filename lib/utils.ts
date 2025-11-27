@@ -17,11 +17,20 @@ export const formatCurrency = (value: number): string => {
 // Cores de status para veículos
 export const getStatusColor = (status: "preparacao" | "pronto" | "vendido" | "finalizado") => {
     switch (status) {
-        case "preparacao": return "bg-yellow-500"
-        case "pronto": return "bg-green-500"
-        case "vendido": return "bg-blue-500"
-        case "finalizado": return "bg-gray-500"
-        default: return "bg-gray-300"
+        case "pronto":        // Disponível
+            return "bg-green-600 text-white"
+
+        case "preparacao":    // Em preparação
+            return "bg-yellow-500 text-black"
+
+        case "vendido":       // Vendido
+            return "bg-blue-600 text-white"
+
+        case "finalizado":    // Finalizado
+            return "bg-neutral-900 text-white"
+
+        default:
+            return "bg-neutral-400 text-black"
     }
 }
 
@@ -79,21 +88,45 @@ export function calcTotals(transactions: Transaction[]) {
     let mensalSaidas = 0
 
     for (const t of transactions) {
-        if (t.tipo === "entrada") totalEntradas += t.valor
-        else totalSaidas += t.valor
+        const isCarPurchase =
+            t.categoria?.toLowerCase() === "compra_veiculo" ||
+            t.descricao?.toLowerCase().includes("compra") // fallback
+
+        // ✔ Entrada normal (inclui lucro de venda)
+        if (t.tipo === "entrada") {
+            totalEntradas += t.valor
+        }
+
+        // ✔ Saída SOMENTE se não for compra de veículo
+        if (t.tipo === "saida" && !isCarPurchase) {
+            totalSaidas += t.valor
+        }
 
         const td = new Date(t.data)
-        if (td.getMonth() === m && td.getFullYear() === y) {
-            if (t.tipo === "entrada") mensalEntradas += t.valor
-            else mensalSaidas += t.valor
+        const isSameMonth = td.getMonth() === m && td.getFullYear() === y
+
+        if (isSameMonth) {
+            if (t.tipo === "entrada") {
+                mensalEntradas += t.valor
+            } else if (t.tipo === "saida" && !isCarPurchase) {
+                mensalSaidas += t.valor
+            }
         }
     }
 
     const saldo = totalEntradas - totalSaidas
     const lucroMensal = mensalEntradas - mensalSaidas
 
-    return { totalEntradas, totalSaidas, saldo, mensalEntradas, mensalSaidas, lucroMensal }
+    return {
+        totalEntradas,
+        totalSaidas,
+        saldo,
+        mensalEntradas,
+        mensalSaidas,
+        lucroMensal
+    }
 }
+
 
 // Série mensal (últimos 6 meses): {mesLabel, entradas, saidas, lucro}
 export function buildMonthlySeries(transactions: Transaction[]) {
@@ -119,9 +152,18 @@ export function buildMonthlySeries(transactions: Transaction[]) {
         const key = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`
         const idx = idxByKey.get(key)
         if (idx == null) continue
-        if (t.tipo === "entrada") buckets[idx].entradas += t.valor
-        else buckets[idx].saidas += t.valor
+
+        const isCarPurchase =
+            t.categoria?.toLowerCase() === "compra_veiculo" ||
+            t.descricao?.toLowerCase().includes("compra")
+
+        if (t.tipo === "entrada") {
+            buckets[idx].entradas += t.valor
+        } else if (!isCarPurchase) {
+            buckets[idx].saidas += t.valor
+        }
     }
+
 
     return buckets.map(b => ({
         mes: b.label.toUpperCase(),
@@ -134,11 +176,35 @@ export function buildMonthlySeries(transactions: Transaction[]) {
 // Pizza: por categoria (apenas entradas)
 export function buildCategoryPie(transactions: Transaction[]) {
     const map = new Map<string, number>()
+
+    const getCategoryKey = (t: Transaction): string => {
+        if (t.tipo !== "entrada") return "" // ignorado depois
+
+        // Caso especial: lucro de venda de veículo
+        if (t.categoria?.toLowerCase() === "lucro venda veículo") {
+            if (t.descricao) {
+                // tira o "Lucro venda" do começo, se tiver, e usa o resto
+                const cleaned = t.descricao.replace(/^lucro venda\s+/i, "").trim()
+                return cleaned || "Lucro venda veículo"
+            }
+            return "Lucro venda veículo"
+        }
+
+        // Demais receitas: agrupadas pela categoria normal
+        return t.categoria || "Outros"
+    }
+
     for (const t of transactions) {
         if (t.tipo !== "entrada") continue
-        map.set(t.categoria || "Outros", (map.get(t.categoria || "Outros") || 0) + t.valor)
+
+        const key = getCategoryKey(t)
+        if (!key) continue
+
+        map.set(key, (map.get(key) || 0) + t.valor)
     }
+
     return Array.from(map.entries()).map(([name, value]) => ({ name, value }))
 }
+
 
 

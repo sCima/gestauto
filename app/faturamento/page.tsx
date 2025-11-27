@@ -14,7 +14,6 @@ import { Button } from "@/components/ui/button"
 import { useToast } from "@/components/ui/use-toast"
 
 
-
 // MOCKS para visual imediato (só usados se não houver dados reais)
 const mockTransactions: Transaction[] = [
     { id: "m1", tipo: "entrada", valor: 120000, descricao: "Venda Corolla", categoria: "Venda", data: "2025-08-10", recorrente: false },
@@ -31,13 +30,13 @@ export default function BillingPage() {
     const [toEdit, setToEdit] = useState<Transaction | null>(null)
     const { toast } = useToast()
 
-    // 🔐 Carregar usuário
+    // Carregar usuário
     useEffect(() => {
         const user = localStorage.getItem("gestauto_user")
         if (user) setCurrentUser(JSON.parse(user))
     }, [])
 
-    // 🚫 Bloqueio de acesso com toast
+    // Bloqueio de acesso com toast
     useEffect(() => {
         if (currentUser && !["owner", "dono"].includes(currentUser.profile)) {
             toast.error("Você não possui acesso")
@@ -47,13 +46,13 @@ export default function BillingPage() {
         }
     }, [currentUser, toast])
 
-    // 🔄 Carregar transações
+    // Carregar transações
     useEffect(() => {
         const stored = loadTransactions()
         setTransactions(stored.length > 0 ? stored : mockTransactions)
     }, [])
 
-    // 💾 Persistir alterações reais
+    // Persistir alterações reais
     useEffect(() => {
         if (transactions.length && transactions !== mockTransactions) {
             saveTransactions(transactions)
@@ -100,9 +99,11 @@ export default function BillingPage() {
             />
 
             <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-                <div className="mb-6 flex items-center justify-between">
+                {/* Título + abas */}
+                <div className="mb-6 flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
                     <h2 className="text-2xl font-bold">Faturamento</h2>
-                    <div className="flex items-center gap-2">
+
+                    <div className="flex flex-wrap items-center gap-2">
                         <Button
                             variant={tab === "resumo" ? "default" : "ghost"}
                             onClick={() => setTab("resumo")}
@@ -128,8 +129,16 @@ export default function BillingPage() {
                             Recorrentes
                         </Button>
                     </div>
+                </div>
 
-                    <TransactionForm onSubmit={handleSubmit} toEdit={toEdit} onClearEdit={() => setToEdit(null)} />
+                {/* Form de transação em uma linha só, abaixo do header */}
+                <div className="mb-6">
+                    <TransactionForm
+                        onSubmit={handleSubmit}
+                        toEdit={toEdit}
+                        onClearEdit={() => setToEdit(null)}
+                        className="w-full"
+                    />
                 </div>
 
                 {/* ===== RESUMO ===== */}
