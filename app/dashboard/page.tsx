@@ -8,6 +8,7 @@ import { formatCurrency } from "@/lib/utils"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Package, TrendingUp, DollarSign, Wallet } from "lucide-react"
 import FipeSearch from "@/components/fipe/FipeSearch"
+import ChatGestAuto from "@/components/assistente/ChatGestAuto"
 
 // Recharts
 import {
@@ -498,6 +499,19 @@ export default function DashboardPage() {
                         </Card>
                     </>
                 )}
+
+
+                {/* Onde entram gráficos e cards principais */}
+                <div className="grid grid-cols-1 xl:grid-cols-[2fr,1fr] gap-6 mt-6">
+                    <div className="space-y-6">
+                        {/* seus cards/gráficos atuais do dashboard */}
+                        {/* ex: <KpiCards /> / <DashboardCharts /> etc */}
+                    </div>
+
+                    {/* 👉 Chat GestAuto vai aqui na coluna da direita */}
+                    <ChatGestAuto />
+                </div>
+
             </main>
         </ProtectedRoute>
     )
