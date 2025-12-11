@@ -1,144 +1,228 @@
 "use client"
 
-import { useState, useEffect } from "react"
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog"
+import { useEffect, useState } from "react"
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
-import { Vehicle } from "@/data/vehicles"
-
-// ✅ Função para aplicar máscara de moeda (BRL)
-function formatCurrencyBR(value: string | number) {
-    if (!value) return ""
-    const numeric = value.toString().replace(/\D/g, "")
-    return new Intl.NumberFormat("pt-BR", {
-        style: "currency",
-        currency: "BRL",
-    }).format(Number(numeric) / 100)
-}
-
-// ✅ Função para extrair valor numérico da máscara
-function extractNumericValue(formatted: string): number {
-    return Number(formatted.replace(/\D/g, "")) / 100
-}
+import { Vehicle, VehicleExpense } from "@/data/vehicles"
+import VehicleExpensesManager from "@/components/vehicles/VehicleExpensesManager"
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 
 interface VehicleEditDialogProps {
-    vehicle: Vehicle | null
     open: boolean
+    vehicle: Vehicle | null
     onClose: () => void
     onSave: (vehicle: Vehicle) => void
 }
 
-export default function VehicleEditDialog({ vehicle, open, onClose, onSave }: VehicleEditDialogProps) {
-    const [form, setForm] = useState({
-        brand: "",
-        model: "",
-        year: "",
-        purchasePrice: "",
-        expectedSalePrice: "",
-    })
+export default function VehicleEditDialog({
+    open,
+    vehicle,
+    onClose,
+    onSave
+}: VehicleEditDialogProps) {
+    const [brand, setBrand] = useState("")
+    const [model, setModel] = useState("")
+    const [year, setYear] = useState("")
+    const [color, setColor] = useState("")
+    const [purchasePrice, setPurchasePrice] = useState("")
+    const [expectedSalePrice, setExpectedSalePrice] = useState("")
+    const [minimumSalePrice, setMinimumSalePrice] = useState("")
+    const [expenses, setExpenses] = useState<VehicleExpense[]>([])
+    const [notes, setNotes] = useState("")
 
     useEffect(() => {
         if (vehicle) {
-            setForm({
-                brand: vehicle.brand,
-                model: vehicle.model,
-                year: String(vehicle.year),
-                purchasePrice: formatCurrencyBR(vehicle.purchasePrice),
-                expectedSalePrice: vehicle.expectedSalePrice != null
-                    ? formatCurrencyBR(vehicle.expectedSalePrice)
-                    : "",
-
-            })
+            setBrand(vehicle.brand)
+            setModel(vehicle.model)
+            setYear(String(vehicle.year))
+            setColor(vehicle.color || "")
+            setPurchasePrice(String(vehicle.purchasePrice))
+            setExpectedSalePrice(String(vehicle.expectedSalePrice || ""))
+            setMinimumSalePrice(String(vehicle.minimumSalePrice || ""))
+            setExpenses(vehicle.expenses || [])
+            setNotes(vehicle.notes || "")
         }
     }, [vehicle])
 
-    const handleSave = () => {
+    function handleSave() {
         if (!vehicle) return
 
-        const updatedVehicle: Vehicle = {
+        const totalExpenses = expenses.reduce((sum, exp) => sum + exp.valor, 0)
+        const purchasePriceNum = parseFloat(purchasePrice) || 0
+        const expectedSalePriceNum = parseFloat(expectedSalePrice) || 0
+        const totalCost = purchasePriceNum + totalExpenses
+        const calculatedProfit = expectedSalePriceNum - totalCost
+
+        const updated: Vehicle = {
             ...vehicle,
-            brand: form.brand,
-            model: form.model,
-            year: Number(form.year),
-            purchasePrice: extractNumericValue(form.purchasePrice),
-            expectedSalePrice: extractNumericValue(form.expectedSalePrice),
+            brand,
+            model,
+            year: parseInt(year),
+            color,
+            purchasePrice: purchasePriceNum,
+            expectedSalePrice: expectedSalePriceNum,
+            minimumSalePrice: parseFloat(minimumSalePrice) || undefined,
+            expectedProfit: calculatedProfit,
+            expenses,
+            notes
         }
 
-        onSave(updatedVehicle)
+        onSave(updated)
         onClose()
     }
 
     if (!vehicle) return null
 
+    const totalExpenses = expenses.reduce((sum, exp) => sum + exp.valor, 0)
+    const purchasePriceNum = parseFloat(purchasePrice) || 0
+    const totalCost = purchasePriceNum + totalExpenses
+    const expectedSalePriceNum = parseFloat(expectedSalePrice) || 0
+    const calculatedProfit = expectedSalePriceNum - totalCost
+
     return (
         <Dialog open={open} onOpenChange={onClose}>
-            <DialogContent>
+            <DialogContent className="max-w-3xl max-h-[90vh] overflow-y-auto">
                 <DialogHeader>
                     <DialogTitle>Editar Veículo</DialogTitle>
                 </DialogHeader>
 
-                <div className="space-y-4 py-2">
-                    <div>
-                        <Label>Marca</Label>
-                        <Input
-                            value={form.brand}
-                            onChange={(e) => setForm({ ...form, brand: e.target.value })}
-                        />
-                    </div>
+                <Tabs defaultValue="dados" className="w-full">
+                    <TabsList className="grid w-full grid-cols-2">
+                        <TabsTrigger value="dados">Dados Básicos</TabsTrigger>
+                        <TabsTrigger value="despesas">Despesas Adicionais</TabsTrigger>
+                    </TabsList>
 
-                    <div>
-                        <Label>Modelo</Label>
-                        <Input
-                            value={form.model}
-                            onChange={(e) => setForm({ ...form, model: e.target.value })}
-                        />
-                    </div>
+                    <TabsContent value="dados" className="space-y-4">
+                        <div className="grid grid-cols-2 gap-4">
+                            <div className="space-y-2">
+                                <Label htmlFor="brand">Marca</Label>
+                                <Input
+                                    id="brand"
+                                    value={brand}
+                                    onChange={(e) => setBrand(e.target.value)}
+                                />
+                            </div>
 
-                    <div>
-                        <Label>Ano</Label>
-                        <Input
-                            type="text"
-                            inputMode="numeric"
-                            placeholder="Ex: 2022"
-                            value={form.year}
-                            onChange={(e) => setForm({ ...form, year: e.target.value.replace(/\D/g, "") })}
-                        />
-                    </div>
+                            <div className="space-y-2">
+                                <Label htmlFor="model">Modelo</Label>
+                                <Input
+                                    id="model"
+                                    value={model}
+                                    onChange={(e) => setModel(e.target.value)}
+                                />
+                            </div>
+                        </div>
 
-                    <div>
-                        <Label>Preço de Compra</Label>
-                        <Input
-                            type="text"
-                            inputMode="numeric"
-                            placeholder="R$ 65.000,00"
-                            value={form.purchasePrice}
-                            onChange={(e) => {
-                                const numericValue = e.target.value.replace(/\D/g, "")
-                                setForm({ ...form, purchasePrice: formatCurrencyBR(numericValue) })
-                            }}
-                        />
-                    </div>
+                        <div className="grid grid-cols-2 gap-4">
+                            <div className="space-y-2">
+                                <Label htmlFor="year">Ano</Label>
+                                <Input
+                                    id="year"
+                                    type="number"
+                                    value={year}
+                                    onChange={(e) => setYear(e.target.value)}
+                                />
+                            </div>
 
-                    <div>
-                        <Label>Preço Esperado</Label>
-                        <Input
-                            type="text"
-                            inputMode="numeric"
-                            placeholder="R$ 75.000,00"
-                            value={form.expectedSalePrice}
-                            onChange={(e) => {
-                                const numericValue = e.target.value.replace(/\D/g, "")
-                                setForm({ ...form, expectedSalePrice: formatCurrencyBR(numericValue) })
-                            }}
+                            <div className="space-y-2">
+                                <Label htmlFor="color">Cor</Label>
+                                <Input
+                                    id="color"
+                                    value={color}
+                                    onChange={(e) => setColor(e.target.value)}
+                                />
+                            </div>
+                        </div>
+
+                        <div className="grid grid-cols-2 gap-4">
+                            <div className="space-y-2">
+                                <Label htmlFor="purchasePrice">Valor de Compra (R$)</Label>
+                                <Input
+                                    id="purchasePrice"
+                                    type="number"
+                                    step="0.01"
+                                    value={purchasePrice}
+                                    onChange={(e) => setPurchasePrice(e.target.value)}
+                                />
+                            </div>
+
+                            <div className="space-y-2">
+                                <Label htmlFor="totalCost">Custo Total (com despesas)</Label>
+                                <Input
+                                    id="totalCost"
+                                    value={totalCost.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}
+                                    disabled
+                                    className="bg-muted"
+                                />
+                            </div>
+                        </div>
+
+                        <div className="grid grid-cols-2 gap-4">
+                            <div className="space-y-2">
+                                <Label htmlFor="expectedSalePrice">Preço de Venda Esperado (R$)</Label>
+                                <Input
+                                    id="expectedSalePrice"
+                                    type="number"
+                                    step="0.01"
+                                    value={expectedSalePrice}
+                                    onChange={(e) => setExpectedSalePrice(e.target.value)}
+                                />
+                            </div>
+
+                            <div className="space-y-2">
+                                <Label htmlFor="minimumSalePrice">Preço Mínimo de Venda (R$)</Label>
+                                <Input
+                                    id="minimumSalePrice"
+                                    type="number"
+                                    step="0.01"
+                                    value={minimumSalePrice}
+                                    onChange={(e) => setMinimumSalePrice(e.target.value)}
+                                    placeholder="Opcional"
+                                />
+                            </div>
+                        </div>
+
+                        <div className="space-y-2">
+                            <Label>Lucro Esperado</Label>
+                            <div className={`p-3 rounded-md font-semibold text-lg ${calculatedProfit >= 0 ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'}`}>
+                                {calculatedProfit.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}
+                            </div>
+                            <p className="text-xs text-muted-foreground">
+                                Margem: {totalCost > 0 ? ((calculatedProfit / totalCost) * 100).toFixed(1) : 0}%
+                            </p>
+                        </div>
+
+                        <div className="space-y-2">
+                            <Label htmlFor="notes">Observações</Label>
+                            <textarea
+                                id="notes"
+                                className="w-full min-h-[80px] px-3 py-2 text-sm rounded-md border border-input bg-background"
+                                value={notes}
+                                onChange={(e) => setNotes(e.target.value)}
+                                placeholder="Anotações sobre o veículo..."
+                            />
+                        </div>
+                    </TabsContent>
+
+                    <TabsContent value="despesas">
+                        <VehicleExpensesManager
+                            expenses={expenses}
+                            onUpdate={setExpenses}
+                            purchasePrice={purchasePriceNum}
                         />
-                    </div>
+                    </TabsContent>
+                </Tabs>
+
+                <div className="flex justify-end gap-2 mt-4">
+                    <Button variant="outline" onClick={onClose}>
+                        Cancelar
+                    </Button>
+                    <Button onClick={handleSave}>
+                        Salvar Alterações
+                    </Button>
                 </div>
-
-                <DialogFooter>
-                    <Button variant="outline" onClick={onClose}>Cancelar</Button>
-                    <Button onClick={handleSave}>Salvar</Button>
-                </DialogFooter>
             </DialogContent>
         </Dialog>
     )

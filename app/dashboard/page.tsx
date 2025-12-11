@@ -6,9 +6,16 @@ import Header from "@/components/layout/Header"
 import { Vehicle, initialVehicles } from "@/data/vehicles"
 import { formatCurrency } from "@/lib/utils"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
-import { Package, TrendingUp, DollarSign, Wallet } from "lucide-react"
+import { Package, TrendingUp, DollarSign, ShoppingCart, Calendar } from "lucide-react"
 import FipeSearch from "@/components/fipe/FipeSearch"
 import ChatGestAuto from "@/components/assistente/ChatGestAuto"
+import {
+    Select,
+    SelectContent,
+    SelectItem,
+    SelectTrigger,
+    SelectValue,
+} from "@/components/ui/select"
 
 // Recharts
 import {
@@ -23,8 +30,6 @@ import {
     Tooltip,
     CartesianGrid,
     Legend,
-    AreaChart,
-    Area,
     LabelList,
 } from "recharts"
 
@@ -39,7 +44,7 @@ const COLORS = {
     grid: "#E5E7EB",
 }
 
-const STALE_DAYS_THRESHOLD = 60 // dias parado pra ser considerado "alerta"
+const STALE_DAYS_THRESHOLD = 60
 
 function diffInDays(from: string) {
     const d = new Date(from)
@@ -49,17 +54,18 @@ function diffInDays(from: string) {
     return Math.floor(diffMs / (1000 * 60 * 60 * 24))
 }
 
-function TwoLineTick(props: any) {
-    const { x, y, payload } = props
-    const [line1, line2] = String(payload.value).split("\n")
-    return (
-        <g transform={`translate(${x},${y})`}>
-            <text textAnchor="middle" fill="#374151" fontSize={12}>
-                <tspan x={0} dy={0}>{line1}</tspan>
-                <tspan x={0} dy={14}>{line2}</tspan>
-            </text>
-        </g>
-    )
+// Gera lista de meses dos últimos 12 meses
+function getLast12Months() {
+    const months = []
+    const now = new Date()
+    for (let i = 11; i >= 0; i--) {
+        const d = new Date(now.getFullYear(), now.getMonth() - i, 1)
+        months.push({
+            value: `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`,
+            label: d.toLocaleDateString('pt-BR', { month: 'long', year: 'numeric' })
+        })
+    }
+    return months
 }
 
 export default function DashboardPage() {
@@ -67,13 +73,19 @@ export default function DashboardPage() {
     const [currentUser, setCurrentUser] = useState<any>(null)
     const [activeTab, setActiveTab] = useState<"dashboard" | "fipe">("dashboard")
 
-    // 🔐 Carrega usuário
+    // Filtro de período (padrão: mês atual)
+    const [selectedPeriod, setSelectedPeriod] = useState<string>(() => {
+        const now = new Date()
+        return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`
+    })
+
+    const months = getLast12Months()
+
     useEffect(() => {
         const user = localStorage.getItem("gestauto_user")
         if (user) setCurrentUser(JSON.parse(user))
     }, [])
 
-    // 🚗 Carrega veículos com fallback
     useEffect(() => {
         const saved = localStorage.getItem("gestauto_vehicles")
         if (saved) {
@@ -88,12 +100,9 @@ export default function DashboardPage() {
         }
     }, [])
 
-
-
-    //  PERFIL 
-
     const profile: UserProfile = currentUser?.profile
 
+    // Filtra veículos por vendedor se necessário
     const scopedVehicles = useMemo(() => {
         if (!currentUser) return []
         if (profile === "vendedor" && vehicles.some((v: any) => "responsavelEmail" in v)) {
@@ -102,80 +111,91 @@ export default function DashboardPage() {
         return vehicles
     }, [vehicles, profile, currentUser])
 
+    // Filtra veículos por período selecionado
+    const periodVehicles = useMemo(() => {
+        const [year, month] = selectedPeriod.split('-').map(Number)
+        return scopedVehicles.filter(v => {
+            if (v.status === "vendido" && v.saleDate && typeof v.saleDate === 'string') {
+                const saleDate = new Date(v.saleDate)
+                return saleDate.getFullYear() === year && saleDate.getMonth() + 1 === month
+            }
+            return false
+        })
+    }, [scopedVehicles, selectedPeriod])
+
     if (!currentUser) {
         return <p className="text-center text-gray-500">Carregando...</p>
     }
 
-    <Card className="mt-6">
-        <CardHeader><CardTitle>Tabela FIPE</CardTitle></CardHeader>
-        <CardContent>
-            <FipeSearch />
-        </CardContent>
-    </Card>
-
-    // ===== KPIs =====
+    // KPIs gerais (estoque total)
     const inStock = scopedVehicles.filter(v => v.status !== "vendido")
-    const sold = scopedVehicles.filter(v => v.status === "vendido")
+    const allSold = scopedVehicles.filter(v => v.status === "vendido")
 
-    const totalInventoryValue = inStock.reduce((s, v) => s + Number(v.purchasePrice), 0)
-    const expectedProfit = inStock.reduce((s, v) => s + (Number(v.expectedSalePrice) - Number(v.purchasePrice)), 0)
-    const realizedProfit = sold.reduce((s, v) => s + ((Number(v.salePrice) || 0) - Number(v.purchasePrice)), 0)
+    // KPIs do período
+    const soldInPeriod = periodVehicles
+    const totalSalesValue = soldInPeriod.reduce((s, v) => s + (Number(v.salePrice) || 0), 0)
+    const totalCostInPeriod = soldInPeriod.reduce((s, v) => {
+        const baseCost = Number(v.purchasePrice) || 0
+        const extraCosts = (v.expenses || []).reduce((sum, exp: any) => sum + Number(exp.valor), 0)
+        return s + baseCost + extraCosts
+    }, 0)
+    const profitInPeriod = totalSalesValue - totalCostInPeriod
 
-    // ===== DATASETS DE GRÁFICOS =====
-    // Donut status
+    const totalInventoryValue = inStock.reduce((s, v) => {
+        const baseCost = Number(v.purchasePrice) || 0
+        const extraCosts = (v.expenses || []).reduce((sum, exp: any) => sum + Number(exp.valor), 0)
+        return s + baseCost + extraCosts
+    }, 0)
+
+    const expectedProfit = inStock.reduce((s, v) => {
+        const expectedSale = Number(v.expectedSalePrice) || 0
+        const totalCost = Number(v.purchasePrice) + (v.expenses || []).reduce((sum, exp: any) => sum + Number(exp.valor), 0)
+        return s + (expectedSale - totalCost)
+    }, 0)
+
+    // Status distribution
     const statusDistribution = [
         { name: "Em preparação", key: "preparacao", value: scopedVehicles.filter(v => v.status === "preparacao").length, color: COLORS.amber },
         { name: "Disponível", key: "pronto", value: scopedVehicles.filter(v => v.status === "pronto").length, color: COLORS.blue },
         { name: "Vendido", key: "vendido", value: scopedVehicles.filter(v => v.status === "vendido").length, color: COLORS.green },
-        { name: "Finalizado", key: "finalizado", value: scopedVehicles.filter(v => v.status === "finalizado").length, color: COLORS.gray },
     ].filter(d => d.value > 0)
 
-    // só veículos vendidos (ajusta se tiver "finalizado" também)
-    const soldVehicles = scopedVehicles.filter(
-        v => v.status === "vendido"
-        // || v.status === "finalizado"
-    )
-
-    // Top 5 por lucro (apenas vendidos)
-    const profitPerVehicle = soldVehicles.map(v => {
-        const profit = Number(v.salePrice ?? 0) - Number(v.purchasePrice ?? 0)
+    // Top 5 por lucro (vendidos no período)
+    const profitPerVehicle = soldInPeriod.map(v => {
+        const salePrice = Number(v.salePrice) || 0
+        const purchasePrice = Number(v.purchasePrice) || 0
+        const extraCosts = (v.expenses || []).reduce((sum, exp: any) => sum + Number(exp.valor), 0)
+        const profit = salePrice - purchasePrice - extraCosts
 
         return {
             id: v.id,
+            name: `${v.brand} ${v.model}`,
             name2Lines: `${v.brand} ${v.model}\n${v.year}`,
             profit,
         }
     })
 
     const top5 = profitPerVehicle
-        .filter(p => p.profit > 0)            // opcional
+        .filter(p => p.profit > 0)
         .sort((a, b) => b.profit - a.profit)
         .slice(0, 5)
 
-
-
-
-    // Meta do vendedor
-    const SELL_TARGET = 5
-    const mySoldCount = sold.length
-    const targetPct = Math.min(100, Math.round((mySoldCount / SELL_TARGET) * 100))
-
-    // Veículos parados há muito tempo (sem vender)
+    // Veículos parados
     const staleVehicles = inStock
-        .filter(v => v.entryDate) // só quem tem data
+        .filter(v => v.entryDate)
         .map(v => {
             const days = diffInDays(v.entryDate as string)
             return { ...v, daysStopped: days }
         })
         .filter(v => v.daysStopped !== null && (v.daysStopped as number) >= STALE_DAYS_THRESHOLD)
 
-    const staleInventoryValue = staleVehicles.reduce(
-        (s, v) => s + Number(v.purchasePrice),
-        0
-    )
+    const staleInventoryValue = staleVehicles.reduce((s, v) => {
+        const baseCost = Number(v.purchasePrice) || 0
+        const extraCosts = (v.expenses || []).reduce((sum, exp: any) => sum + Number(exp.valor), 0)
+        return s + baseCost + extraCosts
+    }, 0)
 
-
-    // ===== RENDERIZADORES DE GRÁFICOS =====
+    // Gráficos
     const renderDonut = (
         <ResponsiveContainer width="100%" height="100%">
             <PieChart>
@@ -199,30 +219,14 @@ export default function DashboardPage() {
 
     const renderTop5Bar = (
         <ResponsiveContainer width="100%" height="100%">
-            <BarChart
-                data={top5}
-                margin={{ top: 20, right: 8, bottom: 0, left: 40 }}
-            >
+            <BarChart data={top5} margin={{ top: 20, right: 8, bottom: 0, left: 40 }}>
                 <CartesianGrid stroke={COLORS.grid} vertical={false} />
-
-                <XAxis
-                    dataKey="name2Lines"
-                    interval={0}
-                    // só mostra a primeira parte (marca) no rótulo do eixo
-                    tickFormatter={(value: string) => value.split(" ")[0]}
-                // se quiser pode tirar o TwoLineTick, não precisa mais dele:
-                // tick={<TwoLineTick />}
-                />
-
+                <XAxis dataKey="name" interval={0} angle={-45} textAnchor="end" height={80} />
                 <YAxis tickFormatter={(v) => formatCurrency(Number(v))} />
-
                 <Tooltip
-                    // aqui continua usando o valor numérico normal
                     formatter={(v: any) => formatCurrency(Number(v))}
-                    // aqui o label ainda vem COMPLETO, com o \n se tiver
-                    labelFormatter={(label: string) => label.replace("\n", " — ")}
+                    labelFormatter={(label: string) => label}
                 />
-
                 <Bar dataKey="profit" fill={COLORS.green} radius={[6, 6, 0, 0]}>
                     <LabelList
                         dataKey="profit"
@@ -235,157 +239,211 @@ export default function DashboardPage() {
         </ResponsiveContainer>
     )
 
-
-
-
-    // ===== UI BLOCS =====
-    const CardsKPIs = () => (
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
-            <Card>
-                <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                    <CardTitle className="text-sm font-medium">Valor em Estoque</CardTitle>
-                    <Package className="h-4 w-4 text-muted-foreground" />
-                </CardHeader>
-                <CardContent>
-                    <div className="text-2xl font-bold">{formatCurrency(totalInventoryValue)}</div>
-                    <p className="text-xs text-muted-foreground">{inStock.length} veículo(s)</p>
-                </CardContent>
-            </Card>
-
-            <Card>
-                <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                    <CardTitle className="text-sm font-medium">Lucro Esperado</CardTitle>
-                    <TrendingUp className="h-4 w-4 text-muted-foreground" />
-                </CardHeader>
-                <CardContent>
-                    <div className="text-2xl font-bold text-green-600">{formatCurrency(expectedProfit)}</div>
-                    <p className="text-xs text-muted-foreground">
-                        Margem {totalInventoryValue > 0 ? ((expectedProfit / totalInventoryValue) * 100).toFixed(1) : 0}%
-                    </p>
-                </CardContent>
-            </Card>
-
-            <Card>
-                <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                    <CardTitle className="text-sm font-medium">Lucro Realizado</CardTitle>
-                    <DollarSign className="h-4 w-4 text-muted-foreground" />
-                </CardHeader>
-                <CardContent>
-                    <div className="text-2xl font-bold text-blue-600">{formatCurrency(realizedProfit)}</div>
-                    <p className="text-xs text-muted-foreground">{sold.length} veículo(s) vendidos</p>
-                </CardContent>
-            </Card>
-
-            <Card>
-                <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                    <CardTitle className="text-sm font-medium">Status</CardTitle>
-                    <Wallet className="h-4 w-4 text-muted-foreground" />
-                </CardHeader>
-                <CardContent>
-                    <div className="text-2xl font-bold text-green-600">Online</div>
-                    <p className="text-xs text-muted-foreground">Sistema operacional</p>
-                </CardContent>
-            </Card>
+    // UI Components
+    const PeriodSelector = () => (
+        <div className="flex items-center gap-2">
+            <Calendar className="h-4 w-4 text-muted-foreground" />
+            <Select value={selectedPeriod} onValueChange={setSelectedPeriod}>
+                <SelectTrigger className="w-[200px]">
+                    <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                    {months.map(m => (
+                        <SelectItem key={m.value} value={m.value}>
+                            {m.label}
+                        </SelectItem>
+                    ))}
+                </SelectContent>
+            </Select>
         </div>
     )
 
     const OwnerDashboard = () => (
         <>
-            <CardsKPIs />
-            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mt-6">
-                <Card>
-                    <CardHeader><CardTitle>Distribuição por Status</CardTitle></CardHeader>
-                    <CardContent>{statusDistribution.length ? renderDonut : <p className="text-sm text-muted-foreground">Sem dados</p>}</CardContent>
-                </Card>
-                <Card>
-                    <CardHeader><CardTitle>Top 5 Modelos por Lucro</CardTitle></CardHeader>
-                    <CardContent>{top5.length ? renderTop5Bar : <p className="text-sm text-muted-foreground">Sem dados</p>}</CardContent>
-                </Card>
+            <div className="flex items-center justify-between mb-4">
+                <h3 className="text-lg font-semibold">Métricas do Período</h3>
+                <PeriodSelector />
             </div>
 
-            {/* Alerta no lugar do gráfico agregado */}
-            <div className="grid grid-cols-1 mt-6">
-                <StaleVehiclesCard />
-            </div>
-        </>
-    )
-
-
-    const DonoDashboard = () => (
-        <>
-            <CardsKPIs />
-            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mt-6">
-                <Card className="h-[360px]">
-                    <CardHeader className="pb-2">
-                        <CardTitle>Distribuição do Estoque</CardTitle>
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+                <Card>
+                    <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+                        <CardTitle className="text-sm font-medium">Valor em Estoque</CardTitle>
+                        <Package className="h-4 w-4 text-muted-foreground" />
                     </CardHeader>
-                    <CardContent className="h-[300px]">
-                        {statusDistribution.length
-                            ? renderDonut
-                            : <p className="text-sm text-muted-foreground">Sem dados</p>}
-                    </CardContent>
-                </Card>
-
-                <Card className="h-[360px]">
-                    <CardHeader className="pb-2">
-                        <CardTitle>Modelos com Melhor Margem</CardTitle>
-                    </CardHeader>
-                    <CardContent className="h-[300px]">
-                        {top5.length
-                            ? renderTop5Bar
-                            : <p className="text-sm text-muted-foreground">Sem dados</p>}
-                    </CardContent>
-                </Card>
-            </div>
-
-
-
-            <div className="grid grid-cols-1 mt-6">
-                <StaleVehiclesCard />
-            </div>
-        </>
-    )
-
-
-    const VendedorDashboard = () => (
-        <>
-            <CardsKPIs />
-            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mt-6">
-                <Card>
-                    <CardHeader><CardTitle>Meus Veículos por Status</CardTitle></CardHeader>
-                    <CardContent>{statusDistribution.length ? renderDonut : <p className="text-sm text-muted-foreground">Sem dados</p>}</CardContent>
-                </Card>
-                <Card>
-                    <CardHeader><CardTitle>Meus Melhores Lucros</CardTitle></CardHeader>
-                    <CardContent>{top5.length ? renderTop5Bar : <p className="text-sm text-muted-foreground">Sem dados</p>}</CardContent>
-                </Card>
-            </div>
-            <div className="grid grid-cols-1 mt-6">
-                <Card>
-                    <CardHeader><CardTitle>Minha Meta de Vendas</CardTitle></CardHeader>
                     <CardContent>
-                        <div className="flex items-center justify-between mb-2 text-sm">
-                            <span>Vendas realizadas</span>
-                            <span className="font-medium">{mySoldCount}/{SELL_TARGET}</span>
-                        </div>
-                        <div className="w-full bg-gray-200 rounded-full h-3 overflow-hidden">
-                            <div className="h-3 bg-emerald-500 rounded-full transition-all" style={{ width: `${targetPct}%` }} />
-                        </div>
-                        <p className="text-xs text-muted-foreground mt-2">
-                            Progresso: <span className="font-medium">{targetPct}%</span>
+                        <div className="text-2xl font-bold">{formatCurrency(totalInventoryValue)}</div>
+                        <p className="text-xs text-muted-foreground">{inStock.length} veículo(s)</p>
+                    </CardContent>
+                </Card>
+
+                <Card>
+                    <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+                        <CardTitle className="text-sm font-medium">Lucro Esperado</CardTitle>
+                        <TrendingUp className="h-4 w-4 text-muted-foreground" />
+                    </CardHeader>
+                    <CardContent>
+                        <div className="text-2xl font-bold text-green-600">{formatCurrency(expectedProfit)}</div>
+                        <p className="text-xs text-muted-foreground">
+                            Margem {totalInventoryValue > 0 ? ((expectedProfit / totalInventoryValue) * 100).toFixed(1) : 0}%
+                        </p>
+                    </CardContent>
+                </Card>
+
+                <Card>
+                    <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+                        <CardTitle className="text-sm font-medium">Vendas no Período</CardTitle>
+                        <ShoppingCart className="h-4 w-4 text-muted-foreground" />
+                    </CardHeader>
+                    <CardContent>
+                        <div className="text-2xl font-bold text-blue-600">{soldInPeriod.length}</div>
+                        <p className="text-xs text-muted-foreground">veículo(s) vendidos</p>
+                    </CardContent>
+                </Card>
+
+                <Card>
+                    <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+                        <CardTitle className="text-sm font-medium">Lucro no Período</CardTitle>
+                        <DollarSign className="h-4 w-4 text-muted-foreground" />
+                    </CardHeader>
+                    <CardContent>
+                        <div className="text-2xl font-bold text-green-600">{formatCurrency(profitInPeriod)}</div>
+                        <p className="text-xs text-muted-foreground">
+                            Faturamento: {formatCurrency(totalSalesValue)}
                         </p>
                     </CardContent>
                 </Card>
             </div>
+
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mt-6">
+                <Card className="h-[360px]">
+                    <CardHeader><CardTitle>Distribuição por Status</CardTitle></CardHeader>
+                    <CardContent className="h-[300px]">
+                        {statusDistribution.length ? renderDonut : <p className="text-sm text-muted-foreground">Sem dados</p>}
+                    </CardContent>
+                </Card>
+                <Card className="h-[360px]">
+                    <CardHeader><CardTitle>Top 5 Modelos por Lucro (Período)</CardTitle></CardHeader>
+                    <CardContent className="h-[300px]">
+                        {top5.length ? renderTop5Bar : <p className="text-sm text-muted-foreground">Sem vendas no período</p>}
+                    </CardContent>
+                </Card>
+            </div>
+
+            <div className="grid grid-cols-1 mt-6">
+                <StaleVehiclesCard />
+            </div>
         </>
     )
+
+    const VendedorDashboard = () => {
+        const SELL_TARGET = 5
+        const mySalesInPeriod = soldInPeriod.length
+        const targetPct = Math.min(100, Math.round((mySalesInPeriod / SELL_TARGET) * 100))
+
+        return (
+            <>
+                <div className="flex items-center justify-between mb-4">
+                    <h3 className="text-lg font-semibold">Meu Desempenho</h3>
+                    <PeriodSelector />
+                </div>
+
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                    <Card>
+                        <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+                            <CardTitle className="text-sm font-medium">Valor em Estoque</CardTitle>
+                            <Package className="h-4 w-4 text-muted-foreground" />
+                        </CardHeader>
+                        <CardContent>
+                            <div className="text-2xl font-bold">{formatCurrency(totalInventoryValue)}</div>
+                            <p className="text-xs text-muted-foreground">{inStock.length} veículo(s) sob minha responsabilidade</p>
+                        </CardContent>
+                    </Card>
+
+                    <Card>
+                        <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+                            <CardTitle className="text-sm font-medium">Vendas no Período</CardTitle>
+                            <ShoppingCart className="h-4 w-4 text-muted-foreground" />
+                        </CardHeader>
+                        <CardContent>
+                            <div className="text-2xl font-bold text-blue-600">{mySalesInPeriod}</div>
+                            <p className="text-xs text-muted-foreground">veículo(s) vendidos</p>
+                        </CardContent>
+                    </Card>
+
+                    <Card>
+                        <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+                            <CardTitle className="text-sm font-medium">Valor Realizado</CardTitle>
+                            <DollarSign className="h-4 w-4 text-muted-foreground" />
+                        </CardHeader>
+                        <CardContent>
+                            <div className="text-2xl font-bold text-green-600">{formatCurrency(totalSalesValue)}</div>
+                            <p className="text-xs text-muted-foreground">faturamento bruto</p>
+                        </CardContent>
+                    </Card>
+                </div>
+
+                <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mt-6">
+                    <Card>
+                        <CardHeader><CardTitle>Meus Veículos por Status</CardTitle></CardHeader>
+                        <CardContent className="h-[300px]">
+                            {statusDistribution.length ? renderDonut : <p className="text-sm text-muted-foreground">Sem dados</p>}
+                        </CardContent>
+                    </Card>
+                    <Card>
+                        <CardHeader><CardTitle>Minha Meta de Vendas (Período)</CardTitle></CardHeader>
+                        <CardContent>
+                            <div className="flex items-center justify-between mb-2 text-sm">
+                                <span>Vendas realizadas</span>
+                                <span className="font-medium">{mySalesInPeriod}/{SELL_TARGET}</span>
+                            </div>
+                            <div className="w-full bg-gray-200 rounded-full h-3 overflow-hidden">
+                                <div className="h-3 bg-emerald-500 rounded-full transition-all" style={{ width: `${targetPct}%` }} />
+                            </div>
+                            <p className="text-xs text-muted-foreground mt-2">
+                                Progresso: <span className="font-medium">{targetPct}%</span>
+                            </p>
+                        </CardContent>
+                    </Card>
+                </div>
+
+                <div className="grid grid-cols-1 mt-6">
+                    <Card>
+                        <CardHeader><CardTitle>Tempo em Estoque</CardTitle></CardHeader>
+                        <CardContent>
+                            {inStock.length === 0 ? (
+                                <p className="text-sm text-muted-foreground">Nenhum veículo em estoque.</p>
+                            ) : (
+                                <div className="space-y-2">
+                                    {inStock.map(v => {
+                                        const days = v.entryDate ? diffInDays(v.entryDate) : null
+                                        return (
+                                            <div key={v.id} className="flex items-center justify-between p-3 border rounded-md">
+                                                <div>
+                                                    <p className="font-medium">{v.brand} {v.model} {v.year}</p>
+                                                    <p className="text-xs text-muted-foreground">
+                                                        Entrada: {v.entryDate ? new Date(v.entryDate).toLocaleDateString('pt-BR') : '—'}
+                                                    </p>
+                                                </div>
+                                                <span className={`text-sm font-semibold ${days && days >= STALE_DAYS_THRESHOLD ? 'text-amber-600' : 'text-gray-600'}`}>
+                                                    {days !== null ? `${days} dias` : '—'}
+                                                </span>
+                                            </div>
+                                        )
+                                    })}
+                                </div>
+                            )}
+                        </CardContent>
+                    </Card>
+                </div>
+            </>
+        )
+    }
 
     const StaleVehiclesCard = () => (
         <Card>
             <CardHeader>
-                <CardTitle>
-                    Veículos parados há mais de {STALE_DAYS_THRESHOLD} dias
-                </CardTitle>
+                <CardTitle>Veículos parados há mais de {STALE_DAYS_THRESHOLD} dias</CardTitle>
             </CardHeader>
             <CardContent className="space-y-4">
                 {staleVehicles.length === 0 ? (
@@ -395,45 +453,29 @@ export default function DashboardPage() {
                 ) : (
                     <>
                         <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-2 text-sm">
-                            <span className="font-medium">
-                                {staleVehicles.length} veículo(s) em alerta
-                            </span>
+                            <span className="font-medium">{staleVehicles.length} veículo(s) em alerta</span>
                             <span className="text-xs md:text-sm text-muted-foreground">
-                                Capital travado em estoque:{" "}
-                                <span className="font-semibold">
-                                    {formatCurrency(staleInventoryValue)}
-                                </span>
+                                Capital travado: <span className="font-semibold">{formatCurrency(staleInventoryValue)}</span>
                             </span>
                         </div>
-
                         <div className="space-y-2">
-                            {staleVehicles.slice(0, 5).map((v) => (
-                                <div
-                                    key={v.id}
-                                    className="flex flex-col md:flex-row md:items-center md:justify-between gap-1 rounded-md border border-amber-200 bg-amber-50 px-3 py-2"
-                                >
-                                    <div className="text-sm">
-                                        <p className="font-medium">
-                                            {v.brand} {v.model} {v.year}
-                                        </p>
-                                        <p className="text-xs text-muted-foreground">
-                                            Entrada:{" "}
-                                            {v.entryDate
-                                                ? new Date(v.entryDate).toLocaleDateString("pt-BR")
-                                                : "—"}{" "}
-                                            • Compra: {formatCurrency(v.purchasePrice)}
-                                        </p>
+                            {staleVehicles.slice(0, 5).map((v) => {
+                                const totalCost = Number(v.purchasePrice) + (v.expenses || []).reduce((sum, exp: any) => sum + Number((exp as any).valor), 0)
+                                return (
+                                    <div key={v.id} className="flex flex-col md:flex-row md:items-center md:justify-between gap-1 rounded-md border border-amber-200 bg-amber-50 px-3 py-2">
+                                        <div className="text-sm">
+                                            <p className="font-medium">{v.brand} {v.model} {v.year}</p>
+                                            <p className="text-xs text-muted-foreground">
+                                                Entrada: {v.entryDate ? new Date(v.entryDate).toLocaleDateString("pt-BR") : "—"} •
+                                                Custo total: {formatCurrency(totalCost)}
+                                            </p>
+                                        </div>
+                                        <div className="text-xs md:text-sm font-semibold text-amber-800">
+                                            {(v.daysStopped as number)} dias parado
+                                        </div>
                                     </div>
-                                    <div className="text-xs md:text-sm font-semibold text-amber-800">
-                                        {(v.daysStopped as number)} dias parado
-                                    </div>
-                                </div>
-                            ))}
-                            {staleVehicles.length > 5 && (
-                                <p className="text-xs text-muted-foreground">
-                                    +{staleVehicles.length - 5} veículo(s) também em alerta.
-                                </p>
-                            )}
+                                )
+                            })}
                         </div>
                     </>
                 )}
@@ -441,8 +483,6 @@ export default function DashboardPage() {
         </Card>
     )
 
-
-    // ===== RENDER =====
     return (
         <ProtectedRoute>
             <Header
@@ -455,7 +495,6 @@ export default function DashboardPage() {
             />
 
             <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-                {/* Tabs simples (internas ao dashboard) */}
                 <div className="flex gap-2 mb-6">
                     <button
                         className={`px-4 py-2 rounded-md text-sm font-medium ${activeTab === "dashboard" ? "bg-blue-600 text-white" : "bg-gray-100 text-gray-700"}`}
@@ -463,55 +502,36 @@ export default function DashboardPage() {
                     >
                         Visão Geral
                     </button>
-                    <button
+                    {/* <button
                         className={`px-4 py-2 rounded-md text-sm font-medium ${activeTab === "fipe" ? "bg-blue-600 text-white" : "bg-gray-100 text-gray-700"}`}
                         onClick={() => setActiveTab("fipe")}
                     >
                         FIPE
-                    </button>
+                    </button> */}
                 </div>
 
-                {/* VISÃO GERAL */}
                 {activeTab === "dashboard" && (
                     <>
                         <h2 className="text-2xl font-bold mb-6">
                             Dashboard {profile === "owner" ? "— Visão Global" : profile === "dono" ? "— Minha Loja" : "— Meu Desempenho"}
                         </h2>
 
-                        {profile === "owner" && <OwnerDashboard />}
-                        {profile === "dono" && <DonoDashboard />}
+                        {(profile === "owner" || profile === "dono") && <OwnerDashboard />}
                         {profile === "vendedor" && <VendedorDashboard />}
+                        <div className="grid grid-cols-1 xl:grid-cols-[2fr,1fr] gap-6 mt-6">
+                            <div className="space-y-6"></div>
+                            <ChatGestAuto />
+                        </div>
                     </>
                 )}
 
-                {/* FIPE */}
-                {activeTab === "fipe" && (
+                {/* {activeTab === "fipe" && (
                     <>
-                        <h2 className="text-2xl font-bold mb-6">Tabela FIPE</h2>
-                        <Card>
-                            <CardHeader>
-                                <CardTitle>Consulta FIPE</CardTitle>
-                            </CardHeader>
-                            <CardContent>
-                                {/* Componente que consome https://fipeapi.com.br/documentacao.php */}
-                                <FipeSearch />
-                            </CardContent>
-                        </Card>
+                            <CardContent><FipeSearch /></CardContent>
                     </>
-                )}
+                )} */}
 
-
-                {/* Onde entram gráficos e cards principais */}
-                <div className="grid grid-cols-1 xl:grid-cols-[2fr,1fr] gap-6 mt-6">
-                    <div className="space-y-6">
-                        {/* seus cards/gráficos atuais do dashboard */}
-                        {/* ex: <KpiCards /> / <DashboardCharts /> etc */}
-                    </div>
-
-                    {/* 👉 Chat GestAuto vai aqui na coluna da direita */}
-                    <ChatGestAuto />
-                </div>
-
+                
             </main>
         </ProtectedRoute>
     )

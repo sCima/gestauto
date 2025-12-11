@@ -70,13 +70,7 @@ export default function VehicleCard({ vehicle, onDelete, onEdit, onStatusChange 
 
                     {typeof vehicle.expectedSalePrice === "number" && (
                         <p>
-                            <strong>Valor esperado:</strong> {formatCurrency(vehicle.expectedSalePrice)}
-                        </p>
-                    )}
-
-                    {typeof vehicle.expectedProfit === "number" && (
-                        <p>
-                            <strong>Lucro esperado:</strong> {formatCurrency(vehicle.expectedProfit)}
+                            <strong>Valor mínimo:</strong> {formatCurrency(vehicle.expectedSalePrice)}
                         </p>
                     )}
 
@@ -123,7 +117,6 @@ export default function VehicleCard({ vehicle, onDelete, onEdit, onStatusChange 
                                 <SelectItem value="preparacao">Em preparação</SelectItem>
                                 <SelectItem value="pronto">Disponível</SelectItem>
                                 <SelectItem value="vendido">Vendido</SelectItem>
-                                <SelectItem value="finalizado">Finalizado</SelectItem>
                             </SelectContent>
                         </Select>
                     </div>

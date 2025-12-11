@@ -15,7 +15,7 @@ export interface VehicleFormData {
     year: string
     purchasePrice: string
     fipePrice: string
-    status: "preparacao" | "pronto" | "vendido" | "finalizado"
+    status: "preparacao" | "pronto" | "vendido"
     entryDate: string
     expectedSalePrice: string
     expectedProfit: string

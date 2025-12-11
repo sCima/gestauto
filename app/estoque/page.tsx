@@ -21,7 +21,6 @@ interface VehicleFormData {
     entryDate: string;
     fipePrice?: string;
     expectedSalePrice?: string;
-    expectedProfit?: string;
     color: string;      
     notes: string;      
 }
@@ -74,9 +73,6 @@ export default function EstoquePage() {
             ? Number(data.expectedSalePrice.replace(/\D/g, "")) / 100
             : undefined
 
-        const expectedProfit = data.expectedProfit
-            ? Number(data.expectedProfit.replace(/\D/g, "")) / 100
-            : undefined
 
 
         if (
@@ -102,7 +98,6 @@ export default function EstoquePage() {
             purchasePrice: purchasePriceClean,
             fipePrice: fipePriceClean,
             expectedSalePrice,
-            expectedProfit,
             status: data.status as Vehicle["status"],
             responsavelEmail: currentUser?.email || "",
             entryDate: data.entryDate || new Date().toISOString().slice(0, 10),

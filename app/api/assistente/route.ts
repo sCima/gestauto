@@ -36,7 +36,7 @@ function getVeiculosParadosPorTempo() {
 
 function getVeiculosMaisAntigos() {
     const veiculosAtivos = memoryVehicles
-        .filter(v => v.status !== "vendido" && v.status !== "finalizado")
+        .filter(v => v.status !== "vendido")
         .sort((a, b) => a.year - b.year)
 
     return veiculosAtivos
@@ -51,7 +51,7 @@ function getVeiculoMaisCaro() {
 
 function getVeiculoMaisBarato() {
     if (memoryVehicles.length === 0) return null
-    const veiculosAtivos = memoryVehicles.filter(v => v.status !== "vendido" && v.status !== "finalizado")
+    const veiculosAtivos = memoryVehicles.filter(v => v.status === "preparacao" || v.status === "pronto")
     if (veiculosAtivos.length === 0) return null
     return veiculosAtivos.reduce((min, v) =>
         v.purchasePrice < min.purchasePrice ? v : min
@@ -64,13 +64,11 @@ function getEstatisticasEstoque() {
         preparacao: memoryVehicles.filter(v => v.status === "preparacao").length,
         pronto: memoryVehicles.filter(v => v.status === "pronto").length,
         vendido: memoryVehicles.filter(v => v.status === "vendido").length,
-        finalizado: memoryVehicles.filter(v => v.status === "finalizado").length,
     }
     const valorTotalEstoque = memoryVehicles
-        .filter(v => v.status !== "vendido" && v.status !== "finalizado")
         .reduce((sum, v) => sum + v.purchasePrice, 0)
 
-    const veiculosAtivos = memoryVehicles.filter(v => v.status !== "vendido" && v.status !== "finalizado")
+    const veiculosAtivos = memoryVehicles.filter(v => v.status !== "vendido")
     const ticketMedio = veiculosAtivos.length > 0 ? valorTotalEstoque / veiculosAtivos.length : 0
 
     return { total, porStatus, valorTotalEstoque, veiculosAtivos: veiculosAtivos.length, ticketMedio }
@@ -93,7 +91,6 @@ function addVeiculoFromAI(data: {
         color: data.color || "",
         purchasePrice: data.purchasePrice,
         expectedSalePrice: data.expectedSalePrice || 0,
-        expectedProfit: (data.expectedSalePrice || 0) - data.purchasePrice,
         status: data.status ?? "preparacao",
         responsavelEmail: "",
         entryDate: new Date().toISOString().slice(0, 10),
@@ -201,6 +198,15 @@ function getFluxoDeCaixa() {
 
 export async function POST(req: NextRequest) {
     try {
+        // Verificar se a API key está configurada
+        if (!process.env.GEMINI_API_KEY) {
+            console.error("❌ GEMINI_API_KEY não encontrada!")
+            return NextResponse.json(
+                { error: "Configuração da API ausente. Configure GEMINI_API_KEY nas variáveis de ambiente." },
+                { status: 500 },
+            )
+        }
+
         const body = (await req.json()) as {
             messages: { role: "user" | "assistant"; content: string }[]
         }
@@ -227,7 +233,7 @@ export async function POST(req: NextRequest) {
                                 properties: {
                                     status: {
                                         type: SchemaType.STRING,
-                                        description: "Opcional. Filtrar por status: preparacao, pronto, vendido, finalizado",
+                                        description: "Opcional. Filtrar por status: preparacao, pronto, vendido",
                                     },
                                 },
                             },
@@ -284,7 +290,7 @@ export async function POST(req: NextRequest) {
                                     color: { type: SchemaType.STRING, description: "Cor do veículo" },
                                     purchasePrice: { type: SchemaType.NUMBER, description: "Preço de compra em reais" },
                                     expectedSalePrice: { type: SchemaType.NUMBER, description: "Preço de venda esperado" },
-                                    status: { type: SchemaType.STRING, description: "Status: preparacao, pronto, vendido, finalizado" },
+                                    status: { type: SchemaType.STRING, description: "Status: preparacao, pronto, vendido" },
                                 },
                                 required: ["brand", "model", "year", "purchasePrice"],
                             },
@@ -550,8 +556,7 @@ Antes de confirmar que existe um veículo/transação:
 Total de veículos: ${stats.total}
 ├─ 🔧 Em preparação: ${stats.porStatus.preparacao}
 ├─ ✅ Prontos: ${stats.porStatus.pronto}
-├─ 💰 Vendidos: ${stats.porStatus.vendido}
-└─ ✓ Finalizados: ${stats.porStatus.finalizado}
+└─ 💰 Vendidos: ${stats.porStatus.vendido}
 
 💵 Valor total investido (estoque ativo): R$ ${stats.valorTotalEstoque.toLocaleString("pt-BR")}
 📈 Ticket médio: R$ ${stats.ticketMedio.toLocaleString("pt-BR", { maximumFractionDigits: 0 })}`
@@ -597,9 +602,8 @@ Total de veículos: ${stats.total}
                     status: args.status as any,
                 })
 
-                const lucroEsperado = (novo.expectedProfit ?? 0) > 0 ? `Lucro esperado: R$ ${(novo.expectedProfit ?? 0).toLocaleString("pt-BR")}` : ""
                 const follow = await chat.sendMessage(
-                    `✅ Veículo cadastrado com sucesso!\n🚗 ${novo.brand} ${novo.model} ${novo.year}\n💵 Compra: R$ ${novo.purchasePrice.toLocaleString("pt-BR")}\n📍 Status: ${novo.status}\n${lucroEsperado}`,
+                    `✅ Veículo cadastrado com sucesso!\n🚗 ${novo.brand} ${novo.model} ${novo.year}\n💵 Compra: R$ ${novo.purchasePrice.toLocaleString("pt-BR")}\n📍 Status: ${novo.status}\n`,
                 )
                 return NextResponse.json({ reply: follow.response.text() })
             }
@@ -702,10 +706,17 @@ Lucro: R$ ${fluxo.mesAtual.lucro.toLocaleString("pt-BR")} ${fluxo.mesAtual.lucro
         // Sem tool call → resposta direta
         const text = result.response.text()
         return NextResponse.json({ reply: text })
-    } catch (e) {
-        console.error(e)
+    } catch (e: any) {
+        console.error("❌ Erro na API do assistente:", e)
+
+        // Mensagem de erro mais informativa
+        const errorMessage = e?.message || "Erro desconhecido"
+
         return NextResponse.json(
-            { error: "Erro ao processar requisição do assistente." },
+            {
+                error: "Erro ao processar requisição do assistente.",
+                details: process.env.NODE_ENV === "development" ? errorMessage : undefined
+            },
             { status: 500 },
         )
     }

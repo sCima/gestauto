@@ -15,7 +15,7 @@ export const formatCurrency = (value: number): string => {
 }
 
 // Cores de status para veículos
-export const getStatusColor = (status: "preparacao" | "pronto" | "vendido" | "finalizado") => {
+export const getStatusColor = (status: "preparacao" | "pronto" | "vendido") => {
     switch (status) {
         case "pronto":        // Disponível
             return "bg-green-600 text-white"
@@ -26,20 +26,16 @@ export const getStatusColor = (status: "preparacao" | "pronto" | "vendido" | "fi
         case "vendido":       // Vendido
             return "bg-blue-600 text-white"
 
-        case "finalizado":    // Finalizado
-            return "bg-neutral-900 text-white"
-
         default:
             return "bg-neutral-400 text-black"
     }
 }
 
-export const getStatusLabel = (status: "preparacao" | "pronto" | "vendido" | "finalizado") => {
+export const getStatusLabel = (status: "preparacao" | "pronto" | "vendido") => {
     switch (status) {
         case "preparacao": return "Em preparação"
         case "pronto": return "Disponível"
         case "vendido": return "Vendido"
-        case "finalizado": return "Finalizado"
         default: return status
     }
 }
