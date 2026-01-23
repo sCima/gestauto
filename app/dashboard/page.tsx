@@ -87,18 +87,11 @@ export default function DashboardPage() {
     }, [])
 
     useEffect(() => {
-        const saved = localStorage.getItem("gestauto_vehicles")
-        if (saved) {
-            try {
-                const parsed = JSON.parse(saved)
-                setVehicles(Array.isArray(parsed) && parsed.length > 0 ? parsed : initialVehicles)
-            } catch {
-                setVehicles(initialVehicles)
-            }
-        } else {
-            setVehicles(initialVehicles)
-        }
+        fetch("/api/vehicles")
+            .then(res => res.json())
+            .then(setVehicles)
     }, [])
+
 
     const profile: UserProfile = currentUser?.profile
 
@@ -531,7 +524,7 @@ export default function DashboardPage() {
                     </>
                 )} */}
 
-                
+
             </main>
         </ProtectedRoute>
     )

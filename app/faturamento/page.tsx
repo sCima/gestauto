@@ -6,239 +6,287 @@ import Header from "@/components/layout/Header"
 import TransactionSummary from "@/components/faturamento/TransactionSummary"
 import TransactionForm from "@/components/faturamento/TransactionForm"
 import TransactionList from "@/components/faturamento/TransactionList"
-import { RevenueVsExpenseChart, ProfitLineChart, CategoryPieChart } from "@/components/faturamento/Charts"
+import {
+  RevenueVsExpenseChart,
+  ProfitLineChart,
+  CategoryPieChart,
+} from "@/components/faturamento/Charts"
 import { Transaction } from "@/types/transaction"
-import { buildCategoryPie, buildMonthlySeries, calcTotals, loadTransactions, saveTransactions } from "@/lib/utils"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
-import { useToast } from "@/components/ui/use-toast"
-
-
-// MOCKS para visual imediato (só usados se não houver dados reais)
-const mockTransactions: Transaction[] = [
-    { id: "m1", tipo: "entrada", valor: 120000, descricao: "Venda Corolla", categoria: "Venda", data: "2025-08-10", recorrente: false },
-    { id: "m2", tipo: "saida", valor: 8000, descricao: "Aluguel", categoria: "Aluguel", data: "2025-08-05", recorrente: true, proximaOcorrencia: "2025-09-05" },
-    { id: "m3", tipo: "entrada", valor: 95000, descricao: "Venda Civic", categoria: "Venda", data: "2025-09-12", recorrente: false },
-    { id: "m4", tipo: "saida", valor: 4500, descricao: "Marketing", categoria: "Marketing", data: "2025-09-15", recorrente: false },
-    { id: "m5", tipo: "entrada", valor: 135000, descricao: "Venda Jetta", categoria: "Venda", data: "2025-10-02", recorrente: false },
-    { id: "m6", tipo: "saida", valor: 12000, descricao: "Folha", categoria: "Pessoal", data: "2025-10-05", recorrente: true, proximaOcorrencia: "2025-11-05" },
-]
+import { toast } from "sonner"
 
 export default function BillingPage() {
-    const [currentUser, setCurrentUser] = useState<any>(null)
-    const [transactions, setTransactions] = useState<Transaction[]>([])
-    const [toEdit, setToEdit] = useState<Transaction | null>(null)
-    const { toast } = useToast()
+  const [currentUser, setCurrentUser] = useState<any>(null)
+  const [transactions, setTransactions] = useState<Transaction[]>([])
+  const [toEdit, setToEdit] = useState<Transaction | null>(null)
+  const [tab, setTab] = useState<
+    "resumo" | "movs" | "relatorios" | "recorrentes"
+  >("resumo")
 
-    // Carregar usuário
-    useEffect(() => {
-        const user = localStorage.getItem("gestauto_user")
-        if (user) setCurrentUser(JSON.parse(user))
-    }, [])
+  const [monthlySeries, setMonthlySeries] = useState<any[]>([])
+  const [categorySeries, setCategorySeries] = useState<any[]>([])
+  const [loading, setLoading] = useState(false)
 
-    // Bloqueio de acesso com toast
-    useEffect(() => {
-        if (currentUser && !["owner", "dono"].includes(currentUser.profile)) {
-            toast.error("Você não possui acesso")
-            if (typeof window !== "undefined") {
-                window.location.href = "/dashboard"
-            }
-        }
-    }, [currentUser, toast])
+  // 🔹 Usuário mockado (DEV)
+  useEffect(() => {
+    setCurrentUser({
+      name: "Usuário Teste",
+      email: "owner@gestauto.dev",
+      role: "owner",
+    })
+  }, [])
 
-    // Carregar transações
-    useEffect(() => {
-        const stored = loadTransactions()
-        setTransactions(stored.length > 0 ? stored : mockTransactions)
-    }, [])
+  // 🔹 Carregar transações
+  async function loadTransactions() {
+    setLoading(true)
+    try {
+      const res = await fetch("/api/transactions")
+      const data = await res.json()
+      setTransactions(data)
+    } catch {
+      toast.error("Erro ao carregar transações")
+    } finally {
+      setLoading(false)
+    }
+  }
 
-    // Persistir alterações reais
-    useEffect(() => {
-        if (transactions.length && transactions !== mockTransactions) {
-            saveTransactions(transactions)
-        }
-    }, [transactions])
+  // 🔹 Relatórios
+  async function loadReports() {
+    try {
+      const [monthlyRes, categoryRes] = await Promise.all([
+        fetch("/api/reports/monthly"),
+        fetch("/api/reports/categories"),
+      ])
 
+      setMonthlySeries(await monthlyRes.json())
+      setCategorySeries(await categoryRes.json())
+    } catch {
+      toast.error("Erro ao carregar relatórios")
+    }
+  }
 
-    // Hooks derivados
-    const totals = useMemo(() => calcTotals(transactions), [transactions])
-    const monthly = useMemo(() => buildMonthlySeries(transactions), [transactions])
-    const pieCat = useMemo(() => buildCategoryPie(transactions), [transactions])
+  useEffect(() => {
+    loadTransactions()
+    loadReports()
+  }, [])
 
-    const [tab, setTab] = useState<"resumo" | "movs" | "relatorios" | "recorrentes">("resumo")
+  // 🔹 Totais derivados
+  const totals = useMemo(() => {
+    let totalEntradas = 0
+    let totalSaidas = 0
+    let mensalEntradas = 0
+    let mensalSaidas = 0
 
-    if (!currentUser) return null
+    const now = new Date()
+    const m = now.getMonth()
+    const y = now.getFullYear()
 
-    function handleSubmit(tx: Transaction) {
-        setTransactions((prev) => {
-            const isMock = prev === mockTransactions
-            const list = isMock ? [] : prev
-            const exists = list.some((t) => t.id === tx.id)
-            const next = exists ? list.map((t) => (t.id === tx.id ? tx : t)) : [...list, tx]
-            return next
-        })
+    for (const t of transactions) {
+      if (t.tipo === "entrada") totalEntradas += t.valor
+      else totalSaidas += t.valor
+
+      const d = new Date(t.data)
+      if (d.getMonth() === m && d.getFullYear() === y) {
+        if (t.tipo === "entrada") mensalEntradas += t.valor
+        else mensalSaidas += t.valor
+      }
     }
 
-    function handleEdit(t: Transaction) {
-        setToEdit(t)
+    return {
+      totalEntradas,
+      totalSaidas,
+      saldo: totalEntradas - totalSaidas,
+      mensalEntradas,
+      mensalSaidas,
+      lucroMensal: mensalEntradas - mensalSaidas,
     }
+  }, [transactions])
 
-    function handleDelete(id: string) {
-        setTransactions((prev) => prev.filter((t) => t.id !== id))
+  // 🔹 CRUD
+  async function handleSubmit(tx: Transaction) {
+    try {
+      const res = await fetch("/api/transactions", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(tx),
+      })
+
+      if (!res.ok) throw new Error()
+
+      toast.success("Transação salva")
+      setToEdit(null)
+      loadTransactions()
+      loadReports()
+    } catch {
+      toast.error("Erro ao salvar transação")
     }
+  }
 
-    return (
-        <ProtectedRoute>
-            <Header
-                currentPage="dashboard" // mantém navegação global; ajuste se quiser destacar "faturamento" no Header
-                currentUser={currentUser}
-                onLogout={() => {
-                    localStorage.removeItem("gestauto_user")
-                    window.location.href = "/"
-                }}
+  async function handleDelete(id: string) {
+    try {
+      const res = await fetch(`/api/transactions/${id}`, {
+        method: "DELETE",
+      })
+
+      if (!res.ok) throw new Error()
+
+      toast.success("Transação removida")
+      loadTransactions()
+      loadReports()
+    } catch {
+      toast.error("Erro ao remover transação")
+    }
+  }
+
+  function handleEdit(t: Transaction) {
+    setToEdit(t)
+  }
+
+  if (!currentUser) return null
+
+  return (
+    <ProtectedRoute>
+      <Header
+        currentPage="faturamento"
+        currentUser={currentUser}
+        onLogout={() => (window.location.href = "/")}
+      />
+
+      <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+        {/* Header */}
+        <div className="mb-6 flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
+          <h2 className="text-2xl font-bold">Faturamento</h2>
+
+          <div className="flex flex-wrap items-center gap-2">
+            <Button
+              variant={tab === "resumo" ? "default" : "ghost"}
+              onClick={() => setTab("resumo")}
+            >
+              Resumo
+            </Button>
+            <Button
+              variant={tab === "movs" ? "default" : "ghost"}
+              onClick={() => setTab("movs")}
+            >
+              Movimentações
+            </Button>
+            <Button
+              variant={tab === "relatorios" ? "default" : "ghost"}
+              onClick={() => setTab("relatorios")}
+            >
+              Relatórios
+            </Button>
+            <Button
+              variant={tab === "recorrentes" ? "default" : "ghost"}
+              onClick={() => setTab("recorrentes")}
+            >
+              Recorrentes
+            </Button>
+          </div>
+        </div>
+
+        {/* Form */}
+        <div className="mb-6">
+          <TransactionForm
+            onSubmit={handleSubmit}
+            toEdit={toEdit}
+            onClearEdit={() => setToEdit(null)}
+          />
+        </div>
+
+        {/* ===== RESUMO ===== */}
+        {tab === "resumo" && (
+          <>
+            <TransactionSummary {...totals} />
+
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mt-6">
+              <RevenueVsExpenseChart data={monthlySeries} />
+              <ProfitLineChart
+                data={monthlySeries.map((m) => ({
+                  mes: m.mes,
+                  lucro: m.lucro,
+                }))}
+              />
+            </div>
+
+            <div className="grid grid-cols-1 mt-6">
+              <CategoryPieChart data={categorySeries} />
+            </div>
+          </>
+        )}
+
+        {/* ===== MOVIMENTAÇÕES ===== */}
+        {tab === "movs" && (
+          <TransactionList
+            transactions={transactions}
+            onEdit={handleEdit}
+            onDelete={handleDelete}
+          />
+        )}
+
+        {/* ===== RELATÓRIOS ===== */}
+        {tab === "relatorios" && (
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+            <RevenueVsExpenseChart data={monthlySeries} />
+            <ProfitLineChart
+              data={monthlySeries.map((m) => ({
+                mes: m.mes,
+                lucro: m.lucro,
+              }))}
             />
+            <CategoryPieChart data={categorySeries} />
+          </div>
+        )}
 
-            <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-                {/* Título + abas */}
-                <div className="mb-6 flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
-                    <h2 className="text-2xl font-bold">Faturamento</h2>
-
-                    <div className="flex flex-wrap items-center gap-2">
-                        <Button
-                            variant={tab === "resumo" ? "default" : "ghost"}
-                            onClick={() => setTab("resumo")}
-                        >
-                            Resumo
-                        </Button>
-                        <Button
-                            variant={tab === "movs" ? "default" : "ghost"}
-                            onClick={() => setTab("movs")}
-                        >
-                            Movimentações
-                        </Button>
-                        <Button
-                            variant={tab === "relatorios" ? "default" : "ghost"}
-                            onClick={() => setTab("relatorios")}
-                        >
-                            Relatórios
-                        </Button>
-                        <Button
-                            variant={tab === "recorrentes" ? "default" : "ghost"}
-                            onClick={() => setTab("recorrentes")}
-                        >
-                            Recorrentes
-                        </Button>
-                    </div>
-                </div>
-
-                {/* Form de transação em uma linha só, abaixo do header */}
-                <div className="mb-6">
-                    <TransactionForm
-                        onSubmit={handleSubmit}
-                        toEdit={toEdit}
-                        onClearEdit={() => setToEdit(null)}
-                        className="w-full"
-                    />
-                </div>
-
-                {/* ===== RESUMO ===== */}
-                {tab === "resumo" && (
-                    <>
-                        <TransactionSummary
-                            totalEntradas={totals.totalEntradas}
-                            totalSaidas={totals.totalSaidas}
-                            saldo={totals.saldo}
-                            mensalEntradas={totals.mensalEntradas}
-                            mensalSaidas={totals.mensalSaidas}
-                            lucroMensal={totals.lucroMensal}
-                        />
-
-                        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mt-6">
-                            <RevenueVsExpenseChart data={monthly} />
-                            <ProfitLineChart data={monthly.map((m) => ({ mes: m.mes, lucro: m.lucro }))} />
-                        </div>
-
-                        <div className="grid grid-cols-1 mt-6">
-                            <CategoryPieChart data={pieCat} />
-                        </div>
-                    </>
-                )}
-
-                {/* ===== MOVIMENTAÇÕES ===== */}
-                {tab === "movs" && (
-                    <div className="space-y-6">
-                        <Card>
-                            <CardHeader>
-                                <CardTitle>Resumo Rápido</CardTitle>
-                            </CardHeader>
-                            <CardContent className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                                <div>
-                                    <p className="text-sm text-muted-foreground">Entradas no mês</p>
-                                    <p className="text-xl font-semibold text-green-600">
-                                        {totals.mensalEntradas.toLocaleString("pt-BR", { style: "currency", currency: "BRL" })}
-                                    </p>
-                                </div>
-                                <div>
-                                    <p className="text-sm text-muted-foreground">Saídas no mês</p>
-                                    <p className="text-xl font-semibold text-red-600">
-                                        {totals.mensalSaidas.toLocaleString("pt-BR", { style: "currency", currency: "BRL" })}
-                                    </p>
-                                </div>
-                                <div>
-                                    <p className="text-sm text-muted-foreground">Lucro no mês</p>
-                                    <p className={`text-xl font-semibold ${totals.lucroMensal >= 0 ? "text-blue-600" : "text-red-600"}`}>
-                                        {totals.lucroMensal.toLocaleString("pt-BR", { style: "currency", currency: "BRL" })}
-                                    </p>
-                                </div>
-                            </CardContent>
-                        </Card>
-
-                        <TransactionList transactions={transactions} onEdit={handleEdit} onDelete={handleDelete} />
-                    </div>
-                )}
-
-                {/* ===== RELATÓRIOS ===== */}
-                {tab === "relatorios" && (
-                    <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-                        <RevenueVsExpenseChart data={monthly} />
-                        <ProfitLineChart data={monthly.map((m) => ({ mes: m.mes, lucro: m.lucro }))} />
-                        <CategoryPieChart data={pieCat} />
-                    </div>
-                )}
-
-                {/* ===== RECORRENTES ===== */}
-                {tab === "recorrentes" && (
-                    <div className="grid grid-cols-1 gap-6">
-                        <Card>
-                            <CardHeader>
-                                <CardTitle>Próximas Ocorrências (estimadas)</CardTitle>
-                            </CardHeader>
-                            <CardContent>
-                                <ul className="space-y-2">
-                                    {transactions
-                                        .filter((t) => t.recorrente)
-                                        .map((t) => (
-                                            <li key={t.id} className="flex items-center justify-between p-3 border rounded-md">
-                                                <div>
-                                                    <p className="font-medium">{t.categoria} — {t.descricao}</p>
-                                                    <p className="text-sm text-muted-foreground">
-                                                        Próxima: {t.proximaOcorrencia ? new Date(t.proximaOcorrencia).toLocaleDateString("pt-BR") : "—"}
-                                                    </p>
-                                                </div>
-                                                <span className={t.tipo === "entrada" ? "text-green-600 font-semibold" : "text-red-600 font-semibold"}>
-                                                    {(t.tipo === "entrada" ? "+" : "-")}{t.valor.toLocaleString("pt-BR", { style: "currency", currency: "BRL" })}
-                                                </span>
-                                            </li>
-                                        ))}
-                                    {transactions.filter((t) => t.recorrente).length === 0 && (
-                                        <p className="text-muted-foreground">Nenhuma transação recorrente cadastrada.</p>
-                                    )}
-                                </ul>
-                            </CardContent>
-                        </Card>
-                    </div>
-                )}
-            </main>
-        </ProtectedRoute>
-    )
+        {/* ===== RECORRENTES ===== */}
+        {tab === "recorrentes" && (
+          <Card>
+            <CardHeader>
+              <CardTitle>Próximas Ocorrências</CardTitle>
+            </CardHeader>
+            <CardContent>
+              <ul className="space-y-2">
+                {transactions
+                  .filter((t) => t.recorrente)
+                  .map((t) => (
+                    <li
+                      key={t.id}
+                      className="flex items-center justify-between p-3 border rounded-md"
+                    >
+                      <div>
+                        <p className="font-medium">
+                          {t.categoria} — {t.descricao}
+                        </p>
+                        <p className="text-sm text-muted-foreground">
+                          Próxima:{" "}
+                          {t.proximaOcorrencia
+                            ? new Date(
+                                t.proximaOcorrencia
+                              ).toLocaleDateString("pt-BR")
+                            : "—"}
+                        </p>
+                      </div>
+                      <span
+                        className={
+                          t.tipo === "entrada"
+                            ? "text-green-600 font-semibold"
+                            : "text-red-600 font-semibold"
+                        }
+                      >
+                        {(t.tipo === "entrada" ? "+" : "-") +
+                          t.valor.toLocaleString("pt-BR", {
+                            style: "currency",
+                            currency: "BRL",
+                          })}
+                      </span>
+                    </li>
+                  ))}
+              </ul>
+            </CardContent>
+          </Card>
+        )}
+      </main>
+    </ProtectedRoute>
+  )
 }

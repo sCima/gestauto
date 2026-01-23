@@ -19,8 +19,8 @@ export interface VehicleFormData {
     entryDate: string
     expectedSalePrice: string
     expectedProfit: string
-    color: string        
-    notes: string        
+    color: string
+    notes: string
 }
 
 export default function VehicleForm({ onSubmit }: { onSubmit: (data: VehicleFormData) => void }) {
@@ -125,7 +125,7 @@ export default function VehicleForm({ onSubmit }: { onSubmit: (data: VehicleForm
         })
     }
 
-    const handleSubmit = (e: React.FormEvent) => {
+    const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault()
 
         if (!form.brand || !form.model || !form.year || !form.purchasePrice) {
@@ -135,7 +135,12 @@ export default function VehicleForm({ onSubmit }: { onSubmit: (data: VehicleForm
             return
         }
 
-        onSubmit(form)
+        await fetch("/api/vehicles", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify(form),
+        })
+
     }
 
 
